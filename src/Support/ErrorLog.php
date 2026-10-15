@@ -2,9 +2,12 @@
 
 namespace CookieManagerKit\Support;
 
+use CookieManagerKit\Log\CookieManagerLogger;
+
 /**
  * Server-side error logging for the public endpoints. Exception messages can carry request-derived text, so the
- * line is flattened (no control characters or newlines) and capped before it reaches the log.
+ * line is flattened (no control characters or newlines) and capped before it reaches the `cookie_manager` log
+ * channel. Logging can never change a response: any failure inside record() is swallowed.
  */
 final class ErrorLog
 {
@@ -21,7 +24,7 @@ final class ErrorLog
     public static function record(\Throwable $e): void
     {
         try {
-            \Concrete\Core\Support\Facade\Log::addError(self::format($e));
+            \Core::make(CookieManagerLogger::class)->getLogger()->error(self::format($e));
         } catch (\Throwable) {
         }
     }
