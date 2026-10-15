@@ -166,7 +166,7 @@ final class TrackingCode
         try {
             $output = self::rewrite($code, $category, $nonce, $stats);
 
-            return $stats !== null && self::verify($output, $category, $nonce, $stats) ? $output : '';
+            return self::verify($output, $category, $nonce, $stats) ? $output : '';
         } catch (\Throwable) {
             return ''; // fail closed
         }
