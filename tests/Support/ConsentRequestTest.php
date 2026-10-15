@@ -32,6 +32,14 @@ final class ConsentRequestTest extends TestCase
         $this->assertNotNull(ConsentRequest::parse('Application/JSON', '{"v":1,"c":[]}', self::KNOWN));
     }
 
+    public function testAcceptsABodyOfExactlyTheMaximumSize(): void
+    {
+        $body = '{"v":1,"c":[]}' . str_repeat(' ', 2048 - 14);
+
+        $this->assertSame(2048, strlen($body));
+        $this->assertNotNull(ConsentRequest::parse('application/json', $body, self::KNOWN));
+    }
+
     /**
      * @return array<string, array{?string, string}>
      */
@@ -46,7 +54,8 @@ final class ConsentRequestTest extends TestCase
             'not json' => ['application/json', 'v=1&c=analytics'],
             'json scalar' => ['application/json', '5'],
             'json list' => ['application/json', '[1,["analytics"]]'],
-            'oversize' => ['application/json', '{"v":1,"c":[],"pad":"' . "\x41" . '"}' . str_repeat(' ', 3000)],
+            'oversize' => ['application/json', '{"v":1,"c":[]}' . str_repeat(' ', 3000)],
+            'one byte over the cap' => ['application/json', '{"v":1,"c":[]}' . str_repeat(' ', 2049 - 14)],
             'unknown key' => ['application/json', '{"v":1,"c":[],"extra":true}'],
             'missing v' => ['application/json', '{"c":[]}'],
             'missing c' => ['application/json', '{"v":1}'],

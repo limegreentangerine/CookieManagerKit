@@ -45,8 +45,13 @@ class Consent
     {
         try {
             $status = $this->status(app(Request::class));
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
             $status = 500;
+
+            try {
+                \Concrete\Core\Support\Facade\Log::addError('Cookie Manager: consent endpoint failed: ' . $e->getMessage());
+            } catch (\Throwable) {
+            }
         }
 
         return new Response(
