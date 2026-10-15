@@ -6,12 +6,12 @@
 	"minimum-stability": "stable",
 	"autoload": {
 		"psr-4": {
-			"ComposerPackage\\": "src/"
+			"CookieManagerKit\\": "src/"
 		}
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"ComposerPackage\\Tests\\": "tests/"
+			"CookieManagerKit\\Tests\\": "tests/"
 		}
 	},
 	"authors": [
