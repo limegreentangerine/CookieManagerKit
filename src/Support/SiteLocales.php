@@ -18,7 +18,26 @@ final class SiteLocales
             $options[$locale->getLocale()] = $locale->getLanguageText() . ' (' . $locale->getLocale() . ')';
         }
 
-        return $options;
+        $site = app('site')->getActiveSiteForEditing();
+        $default = $site ? $site->getDefaultLocale() : null;
+
+        return self::defaultFirst($options, $default ? $default->getLocale() : '');
+    }
+
+    /**
+     * Moves the default locale to the front, so the first (active) tab is never a hidden required field.
+     *
+     * @param array<string, string> $options locale ID => label
+     *
+     * @return array<string, string>
+     */
+    public static function defaultFirst(array $options, string $default): array
+    {
+        if (!array_key_exists($default, $options)) {
+            return $options;
+        }
+
+        return [$default => $options[$default]] + $options;
     }
 
     public static function defaultLocale(): string

@@ -112,7 +112,11 @@ class Categories extends DashboardPageController
             $category = (new Category())->setHandle($handle);
         }
 
-        $category->setSortOrder($this->post('sortOrder'));
+        $sortOrder = $this->post('sortOrder');
+
+        if (is_string($sortOrder) && preg_match('/^\d{1,4}\z/', $sortOrder) === 1) {
+            $category->setSortOrder($sortOrder);
+        }
 
         foreach ($content as $locale => [$title, $description]) {
             $existing = $category->getContent($locale);
