@@ -28,6 +28,43 @@ final class TrackingCodeTest extends TestCase
 
         $this->assertSame(0, $holder->querySelectorAll('noscript')->length, $output);
     }
+
+    /**
+     * @return list<string> the nonce attribute of every script (null shown as an empty string) after a re-parse
+     */
+    private function nonces(string $output): array
+    {
+        $holder = \Dom\HTMLDocument::createEmpty()->createElement('div');
+        $holder->innerHTML = $output;
+        $found = [];
+
+        foreach ($holder->querySelectorAll('script') as $script) {
+            $count = 0;
+
+            foreach ($script->attributes as $attribute) {
+                $count += strtolower($attribute->nodeName) === 'nonce' ? 1 : 0;
+            }
+
+            $this->assertSame(1, $count, $output);
+            $found[] = (string) $script->getAttribute('nonce');
+        }
+
+        return $found;
+    }
+
+    private function nonces0(string $output): array
+    {
+        $holder = \Dom\HTMLDocument::createEmpty()->createElement('div');
+        $holder->innerHTML = $output;
+        $found = [];
+
+        foreach ($holder->querySelectorAll('script') as $script) {
+            $this->assertFalse($script->hasAttribute('nonce'), $output);
+            $found[] = '';
+        }
+
+        return $found;
+    }
     /**
      * @return array<string, array{string}>
      */
@@ -208,5 +245,39 @@ final class TrackingCodeTest extends TestCase
             '<meta name="google-site-verification" content="abc"><script type="text/plain" data-cmk-category="analytics">a()</script>',
             $inert,
         );
+    }
+
+    public function testValidNonceIsStampedOnEveryScript(): void
+    {
+        $code = '<script>a()</script><div><script src="https://x.example/a.js" async></script></div>'
+            . '<template><script>t()</script></template><noscript><script>n()</script></noscript>';
+        $output = TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH');
+
+        $this->assertAllScriptsInert($output, 'analytics', 2);
+        $this->assertSame(['abcd1234EFGH', 'abcd1234EFGH'], array_slice($this->nonces($output), 0, 2));
+
+        $holder = \Dom\HTMLDocument::createEmpty()->createElement('div');
+        $holder->innerHTML = $output;
+        $this->assertSame(2, $holder->querySelectorAll('script[nonce="abcd1234EFGH"]')->length);
+        $this->assertStringContainsString('nonce="abcd1234EFGH"', $holder->querySelector('template')->innerHTML);
+    }
+
+    public function testPastedNonceIsReplaced(): void
+    {
+        $output = TrackingCode::makeInert('<script nonce="pasted-nonce-1" NONCE="x">a()</script>', 'analytics', 'abcd1234EFGH');
+
+        $this->assertSame(['abcd1234EFGH'], $this->nonces($output));
+        $this->assertStringNotContainsString('pasted-nonce-1', $output);
+    }
+
+    public function testInvalidOrNullNonceAddsNoneAndDropsPastedOne(): void
+    {
+        foreach ([null, 'abc', 'abcd 1234efgh', 'abcd"1234efgh', ''] as $nonce) {
+            $output = TrackingCode::makeInert('<script nonce="pasted-nonce-1">a()</script><script>b()</script>', 'analytics', $nonce);
+
+            $this->assertAllScriptsInert($output, 'analytics', 2);
+            $this->assertSame(['', ''], $this->nonces0($output), (string) $nonce);
+            $this->assertStringNotContainsString('pasted-nonce-1', $output);
+        }
     }
 }

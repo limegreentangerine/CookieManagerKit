@@ -7,7 +7,7 @@ namespace CookieManagerKit\Support;
  */
 final class Inert
 {
-    public static function script(string $category, string $src = '', string $inline = '', string $type = ''): string
+    public static function script(string $category, string $src = '', string $inline = '', string $type = '', string $nonce = ''): string
     {
         if (!Text::isHandle($category)) {
             return '';
@@ -27,6 +27,10 @@ final class Inert
 
         if (preg_match('#^[a-z0-9/+.\-]{1,64}\z#i', $type) === 1 && !in_array(strtolower($type), ['text/javascript', 'application/javascript'], true)) {
             $attributes .= ' data-cmk-type="' . $type . '"';
+        }
+
+        if (LoaderScript::isValidNonce($nonce)) {
+            $attributes .= ' nonce="' . Output::e($nonce) . '"';
         }
 
         // "</script", "<script" and "<!--" inside inline code can end the element early or put the parser in the

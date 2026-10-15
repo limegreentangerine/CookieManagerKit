@@ -54,4 +54,22 @@ final class InertTest extends TestCase
         $this->assertSame(1, substr_count(strtolower($html), '<script'));
         $this->assertStringNotContainsString('<!--', $html);
     }
+
+    public function testValidNonceIsEmittedAfterTheOtherAttributes(): void
+    {
+        $this->assertSame(
+            '<script type="text/plain" data-cmk-category="analytics" src="https://px.example/a.js" data-cmk-type="module" nonce="abcd1234EFGH"></script>',
+            Inert::script('analytics', 'https://px.example/a.js', '', 'module', 'abcd1234EFGH'),
+        );
+    }
+
+    public function testInvalidOrEmptyNonceIsNotEmitted(): void
+    {
+        foreach (['', 'abc', 'abcd 1234efgh', 'abcd"><b>1234'] as $nonce) {
+            $this->assertSame(
+                '<script type="text/plain" data-cmk-category="analytics">x();</script>',
+                Inert::script('analytics', '', 'x();', '', $nonce),
+            );
+        }
+    }
 }

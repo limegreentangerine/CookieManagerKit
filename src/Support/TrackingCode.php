@@ -13,17 +13,17 @@ use Dom\HTMLDocument;
  */
 final class TrackingCode
 {
-    private static function rewrite(string $code, string $category): string
+    private static function rewrite(string $code, string $category, ?string $nonce): string
     {
         $holder = HTMLDocument::createEmpty()->createElement('div');
         $holder->innerHTML = $code;
 
-        self::process($holder, $category);
+        self::process($holder, $category, $nonce);
 
         return $holder->innerHTML;
     }
 
-    private static function process(Element $root, string $category): void
+    private static function process(Element $root, string $category, ?string $nonce): void
     {
         foreach (iterator_to_array($root->querySelectorAll('noscript')) as $noscript) {
             $noscript->remove();
@@ -35,13 +35,17 @@ final class TrackingCode
             foreach (iterator_to_array($script->attributes) as $attribute) {
                 $name = strtolower($attribute->nodeName);
 
-                if ($name === 'type' || str_starts_with($name, 'data-cmk-')) {
+                if ($name === 'type' || $name === 'nonce' || str_starts_with($name, 'data-cmk-')) {
                     $script->removeAttribute($attribute->nodeName);
                 }
             }
 
             $script->setAttribute('type', 'text/plain');
             $script->setAttribute('data-cmk-category', $category);
+
+            if (LoaderScript::isValidNonce($nonce)) {
+                $script->setAttribute('nonce', (string) $nonce);
+            }
 
             if (
                 preg_match('#^[a-z0-9/+.\-]{1,64}\z#i', $type) === 1
@@ -54,17 +58,22 @@ final class TrackingCode
         // A template's content is a separate fragment that querySelectorAll does not enter (and PHP exposes
         // no accessor for it), so its markup is rewritten as a snippet of its own and put back.
         foreach (iterator_to_array($root->querySelectorAll('template')) as $template) {
-            $template->innerHTML = self::rewrite($template->innerHTML, $category);
+            $template->innerHTML = self::rewrite($template->innerHTML, $category, $nonce);
         }
     }
-    public static function makeInert(string $code, string $category): string
+
+    /**
+     * A pasted nonce attribute never survives. A valid $nonce (the page's CSP nonce) is stamped on every script so
+     * the loader, which in nonce mode only activates scripts bearing its own nonce, can run them after consent.
+     */
+    public static function makeInert(string $code, string $category, ?string $nonce = null): string
     {
         if (!Text::isHandle($category)) {
             return '';
         }
 
         try {
-            return self::rewrite($code, $category);
+            return self::rewrite($code, $category, $nonce);
         } catch (\Throwable) {
             return ''; // fail closed
         }

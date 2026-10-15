@@ -33,19 +33,35 @@ class ConsentManager
     }
 
     /**
-     * Sites with a Content-Security-Policy bind `cookie_manager_kit.csp_nonce` (a string, or a callable returning
+     * Sites with a Content-Security-Policy bind `cookie_manager_kit.csp_nonce` (a string, or a Closure returning
      * one) so the inline loader carries the request's nonce.
      */
     private static function nonce(): ?string
     {
-        $app = app();
+        try {
+            $app = app();
 
-        if (!$app->bound('cookie_manager_kit.csp_nonce')) {
+            if (!$app->bound('cookie_manager_kit.csp_nonce')) {
+                return null;
+            }
+
+            return self::nonceFrom($app->make('cookie_manager_kit.csp_nonce'));
+        } catch (\Throwable) {
             return null;
         }
+    }
 
-        $nonce = $app->make('cookie_manager_kit.csp_nonce');
-        $nonce = is_callable($nonce) ? $nonce() : $nonce;
+    /**
+     * Only a string or a Closure is a nonce source: a string that happens to name a function is a plain value and
+     * is never called. The result is used only if it is a string (its format is checked where it is emitted).
+     */
+    public static function nonceFrom(mixed $binding): ?string
+    {
+        try {
+            $nonce = $binding instanceof \Closure ? $binding() : $binding;
+        } catch (\Throwable) {
+            return null;
+        }
 
         return is_string($nonce) ? $nonce : null;
     }
@@ -107,12 +123,13 @@ class ConsentManager
         $contents = (string) $event->getArgument('contents');
         $repository = app('site')->getSite()->getConfigRepository();
         $changed = false;
+        $nonce = self::nonce();
 
         foreach (['seo.tracking.code.header', 'seo.tracking.code.footer'] as $key) {
             $code = trim((string) $repository->get($key));
 
             if ($code !== '' && str_contains($contents, $code)) {
-                $contents = str_replace($code, TrackingCode::makeInert($code, self::TRACKING_CATEGORY), $contents);
+                $contents = str_replace($code, TrackingCode::makeInert($code, self::TRACKING_CATEGORY, $nonce), $contents);
                 $changed = true;
             }
         }
