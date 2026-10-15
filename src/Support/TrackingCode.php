@@ -4,6 +4,7 @@ namespace CookieManagerKit\Support;
 
 use Dom\Element;
 use Dom\HTMLDocument;
+use Dom\ParentNode;
 
 /**
  * Makes a pasted tracking snippet (Concrete's SEO tracking code) inert until its category is consented.
@@ -69,6 +70,12 @@ final class TrackingCode
      */
     private static function process(Element $root, string $category, ?string $nonce): array
     {
+        // Tracking snippets never need <svg> or <math>, and foreign content is where the HTML parser's fragment and
+        // document modes disagree (a stray <p> leaves it only in a document), so it is refused before anything else.
+        if ($root->querySelector('svg, math') !== null) {
+            throw new \UnexpectedValueException('Foreign content (svg/math) is not allowed in a tracking snippet.');
+        }
+
         $scripts = 0;
         $inert = 0;
 
@@ -120,20 +127,25 @@ final class TrackingCode
     }
 
     /**
-     * The serialised output is parsed again, the way a browser will parse the page: no script may be executable,
-     * no script may appear or disappear, every script made inert must still be inert (with the nonce when given),
-     * and rewriting the output again must change nothing.
+     * @return list<Element> every script element under the node, in document order (template contents excluded)
+     */
+    private static function scripts(ParentNode $root): array
+    {
+        return iterator_to_array($root->querySelectorAll('script'), false);
+    }
+
+    /**
+     * Checks the scripts of one parse of the output: none may be executable, none may appear or disappear, and every
+     * script made inert must still be inert (with the nonce when given).
      *
      * @param array{scripts: int, inert: int} $stats from the first pass
      */
-    private static function verify(string $output, string $category, ?string $nonce, array $stats): bool
+    private static function scriptsHold(ParentNode $parsed, string $category, ?string $nonce, array $stats): bool
     {
-        $scripts = 0;
+        $scripts = self::scripts($parsed);
         $inert = 0;
 
-        foreach (self::parse($output)->querySelectorAll('script') as $script) {
-            ++$scripts;
-
+        foreach ($scripts as $script) {
             if (self::isExecutable($script->getAttribute('type'))) {
                 return false;
             }
@@ -147,9 +159,33 @@ final class TrackingCode
             }
         }
 
-        return $scripts === $stats['scripts']
-            && $inert >= $stats['inert']
-            && self::rewrite($output, $category, $nonce) === $output;
+        return count($scripts) === $stats['scripts'] && $inert >= $stats['inert'];
+    }
+
+    /**
+     * The serialised output is parsed again, the way a browser will parse the page: as a fragment, and as a full
+     * document in both places a snippet can land (body and head), because a document parse breaks out of foreign
+     * content where the fragment parser does not. In every parse no script may be executable, no script may appear
+     * or disappear, and every script made inert must still be inert (with the nonce when given). Rewriting the
+     * output again must also change nothing.
+     *
+     * @param array{scripts: int, inert: int} $stats from the first pass
+     */
+    private static function verify(string $output, string $category, ?string $nonce, array $stats): bool
+    {
+        $parses = [
+            self::parse($output),
+            HTMLDocument::createFromString('<!DOCTYPE html><html><head></head><body>' . $output . '</body></html>', LIBXML_NOERROR),
+            HTMLDocument::createFromString('<!DOCTYPE html><html><head>' . $output . '</head><body></body></html>', LIBXML_NOERROR),
+        ];
+
+        foreach ($parses as $parsed) {
+            if (!self::scriptsHold($parsed, $category, $nonce, $stats)) {
+                return false;
+            }
+        }
+
+        return self::rewrite($output, $category, $nonce) === $output;
     }
 
     /**

