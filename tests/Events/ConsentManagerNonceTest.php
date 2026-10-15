@@ -244,4 +244,85 @@ final class ConsentManagerNonceTest extends TestCase
         // Concrete's class files refuse to load without it.
         defined('C5_EXECUTE') || define('C5_EXECUTE', true);
     }
+
+    private function noErrors(): callable
+    {
+        return static function (\Throwable $e): void {
+            throw new \LogicException('no error expected: ' . $e->getMessage());
+        };
+    }
+
+    public function testRewriteSnippetsRemovesTheUnionOfSnippetsThatStraddleEachOther(): void
+    {
+        $h = '<script>a()</script><script>evil()</script>';
+        $f = '"><script>a()</script>';
+        $contents = '<head><link href="a.css">' . $h . '</head><body>x' . $f . '</body>';
+        $errors = [];
+
+        $out = ConsentManager::rewriteSnippets($contents, [$h, $f], null, static function (\Throwable $e) use (&$errors): void {
+            $errors[] = $e;
+        });
+
+        // F's first occurrence is the link tag's closing `">` plus H's first script, so it straddles H. The union
+        // (`">` + H) is removed whole: the link tag is left unterminated but nothing stays live. F's second
+        // occurrence (in the body) is a lone snippet and is made inert as usual.
+        $this->assertSame(
+            '<head><link href="a.css</head><body>x"&gt;<script type="text/plain" data-cmk-category="analytics">a()</script></body>',
+            $out,
+        );
+        $this->assertCount(1, $errors);
+        $this->assertInstanceOf(\RuntimeException::class, $errors[0]);
+    }
+
+    public function testRewriteSnippetsContainmentStillLetsTheLongestMatchWin(): void
+    {
+        $out = ConsentManager::rewriteSnippets('<p>[abc]</p>', ['b', 'abc'], null, $this->noErrors(), static fn(string $code): string => strtoupper($code));
+
+        $this->assertSame('<p>[ABC]</p>', $out);
+    }
+
+    public function testRewriteSnippetsAdjacentSnippetsAreBothReplaced(): void
+    {
+        $out = ConsentManager::rewriteSnippets('<p>AB</p>', ['A', 'B'], null, $this->noErrors(), static fn(string $code): string => '(' . $code . ')');
+
+        $this->assertSame('<p>(A)(B)</p>', $out);
+    }
+
+    public function testRewriteSnippetsASnippetEqualToPartOfAReplacementIsNotTouchedInTheReplacement(): void
+    {
+        $out = ConsentManager::rewriteSnippets('A|B', ['A', 'B'], null, $this->noErrors(), static fn(string $code): string => $code === 'A' ? 'B!' : 'C');
+
+        $this->assertSame('B!|C', $out);
+    }
+
+    public function testRewriteSnippetsAThrowingSnippetInsideAnOverlapCountsBothTheThrowAndTheConflict(): void
+    {
+        $errors = [];
+        $out = ConsentManager::rewriteSnippets('1abc2', ['ab', 'bc'], null, static function (\Throwable $e) use (&$errors): void {
+            $errors[] = $e->getMessage();
+        }, static function (string $code): string {
+            if ($code === 'ab') {
+                throw new \RuntimeException('boom');
+            }
+
+            return 'X';
+        });
+
+        $this->assertSame('12', $out);
+        $this->assertCount(2, $errors);
+        $this->assertSame('boom', $errors[0]);
+        $this->assertStringContainsStringIgnoringCase('overlapping', $errors[1]);
+    }
+
+    public function testRewriteSnippetsReportsOneConflictPerClusterOfOverlaps(): void
+    {
+        $errors = 0;
+        $out = ConsentManager::rewriteSnippets('abcd--ab', ['abc', 'bcd', 'ab'], null, static function () use (&$errors): void {
+            ++$errors;
+        }, static fn(string $code): string => '<' . $code . '>');
+
+        // abc and bcd straddle (union abcd removed once); the lone trailing ab is replaced.
+        $this->assertSame('--<ab>', $out);
+        $this->assertSame(1, $errors);
+    }
 }
