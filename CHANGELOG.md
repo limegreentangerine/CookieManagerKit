@@ -8,6 +8,8 @@ Notable changes to this project are documented here.
 
 - Tracking snippets containing `<svg>` or `<math>` are removed, and the inert output is verified with full-document (body and head) parses, closing a foreign-content bypass of the round-trip check.
 - Pasted `data-cmk-*` attributes (and a pasted `nonce` on `text/plain`) are stripped from scripts the rewrite leaves untouched, so a pasted script can no longer be activated as `necessary`.
+- A hand-pasted `<script type="text/plain" data-cmk-category=...>` (or `Inert::script()` output) inside the SEO tracking-code field now stays permanently inert, because pasted `data-cmk-*` attributes are stripped; use the page template or `Inert::script()` outside the SEO field instead.
+- Tracking snippets that straddle each other in the page output (neither contains the other) are removed together rather than leaving one live.
 - Overlapping header and footer tracking snippets are rewritten in a single pass, so no part of either stays live.
 - The `{session}_LOGIN` cookie is described with the remember-me lifetime; the page-output gate is reset at the start of every render; `composer typecheck` fails on errors and is clean.
 

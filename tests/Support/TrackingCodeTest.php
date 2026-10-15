@@ -508,4 +508,26 @@ final class TrackingCodeTest extends TestCase
             $this->assertStringNotContainsString('data-cmk-category', TrackingCode::makeInert($once, 'analytics', 'abcd1234EFGH'));
         }
     }
+
+    public function testForeignContentInsideTemplatesIsRefusedBecauseVerifyCannotSeeInsideThem(): void
+    {
+        $probe = '<svg></p><style><a id="</style><script src=//evil.example/y.js></script>">';
+
+        foreach ([
+            '<template>' . $probe . '</template>',
+            '<template><template>' . $probe . '</template></template>',
+            '<select><template>' . $probe . '</template></select>',
+            '<template><math>x</math></template>',
+        ] as $code) {
+            $this->assertSame('', TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH'), $code);
+        }
+    }
+
+    public function testATemplateWithoutForeignContentIsStillRewritten(): void
+    {
+        $this->assertSame(
+            '<template><script src="a.js" type="text/plain" data-cmk-category="analytics"></script><p>x</p></template>',
+            TrackingCode::makeInert('<template><script src=a.js></script><p>x</p></template>', 'analytics'),
+        );
+    }
 }

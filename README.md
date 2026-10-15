@@ -30,7 +30,7 @@ declaration block, embed placeholders, translation assist, analytics and reports
 
 ## Blocking a script
 
-Mark a script as inert and give it a category handle:
+Mark a script as inert and give it a category handle. This pattern is for page templates and blocks, NOT for the SEO tracking-code field: those snippets are rewritten automatically, and pasted `data-cmk-*` attributes there are stripped.
 
 ```html
 <script type="text/plain" data-cmk-category="analytics" src="https://example.com/a.js"></script>

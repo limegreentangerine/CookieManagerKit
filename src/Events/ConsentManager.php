@@ -52,6 +52,14 @@ class ConsentManager
         }
     }
 
+    private static function report(callable $onError, \Throwable $error): void
+    {
+        try {
+            $onError($error);
+        } catch (\Throwable) {
+        }
+    }
+
     /**
      * The gate is closed first, so a flag left open by an earlier request on a long-lived worker (a render that never
      * reached its page output) cannot make this request's excluded page act; it opens again only after the
@@ -253,13 +261,5 @@ class ConsentManager
         }
 
         return $kept === [] ? $contents : $out . substr($contents, $position);
-    }
-
-    private static function report(callable $onError, \Throwable $error): void
-    {
-        try {
-            $onError($error);
-        } catch (\Throwable) {
-        }
     }
 }

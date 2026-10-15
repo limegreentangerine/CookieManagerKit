@@ -10,6 +10,12 @@ use CookieManagerKit\Events\ConsentManager;
 
 final class ConsentManagerNonceTest extends TestCase
 {
+    private function noErrors(): callable
+    {
+        return static function (\Throwable $e): void {
+            throw new \LogicException('no error expected: ' . $e->getMessage());
+        };
+    }
     public function testStringIsItsOwnNonce(): void
     {
         $this->assertSame('abcd1234efgh', ConsentManager::nonceFrom('abcd1234efgh'));
@@ -239,18 +245,6 @@ final class ConsentManagerNonceTest extends TestCase
         ConsentManager::beforeRender(null);
         $this->assertFalse(ConsentManager::isActive());
     }
-    public static function setUpBeforeClass(): void
-    {
-        // Concrete's class files refuse to load without it.
-        defined('C5_EXECUTE') || define('C5_EXECUTE', true);
-    }
-
-    private function noErrors(): callable
-    {
-        return static function (\Throwable $e): void {
-            throw new \LogicException('no error expected: ' . $e->getMessage());
-        };
-    }
 
     public function testRewriteSnippetsRemovesTheUnionOfSnippetsThatStraddleEachOther(): void
     {
@@ -324,5 +318,10 @@ final class ConsentManagerNonceTest extends TestCase
         // abc and bcd straddle (union abcd removed once); the lone trailing ab is replaced.
         $this->assertSame('--<ab>', $out);
         $this->assertSame(1, $errors);
+    }
+    public static function setUpBeforeClass(): void
+    {
+        // Concrete's class files refuse to load without it.
+        defined('C5_EXECUTE') || define('C5_EXECUTE', true);
     }
 }

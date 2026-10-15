@@ -74,6 +74,8 @@ final class TrackingCode
     {
         // Tracking snippets never need <svg> or <math>, and foreign content is where the HTML parser's fragment and
         // document modes disagree (a stray <p> leaves it only in a document), so it is refused before anything else.
+        // This gate is also the ONLY protection for <template> contents: the document parses in verify() cannot see
+        // inside <template>, so do not weaken it.
         if ($root->querySelector('svg, math') !== null) {
             throw new \UnexpectedValueException('Foreign content (svg/math) is not allowed in a tracking snippet.');
         }
