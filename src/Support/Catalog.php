@@ -35,30 +35,6 @@ final class Catalog
     /**
      * @return array<string, mixed>
      */
-    public static function snapshot(): array
-    {
-        if (self::$memo !== null) {
-            return self::$memo;
-        }
-
-        $cache = app('cache/expensive');
-        $item = $cache->getItem(self::KEY);
-
-        if (!$item->isMiss() && is_array($item->get())) {
-            return self::$memo = $item->get();
-        }
-
-        $data = self::build();
-        $item->set($data);
-        $item->expiresAfter(self::LIFETIME);
-        $cache->save($item);
-
-        return self::$memo = $data;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
     private static function build(): array
     {
         $em = app(EntityManagerInterface::class);
@@ -140,6 +116,30 @@ final class Catalog
         $page = Page::getByID($cid);
 
         return $page && !$page->isError() ? Output::safeUrl((string) $page->getCollectionLink()) : '';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function snapshot(): array
+    {
+        if (self::$memo !== null) {
+            return self::$memo;
+        }
+
+        $cache = app('cache/expensive');
+        $item = $cache->getItem(self::KEY);
+
+        if (!$item->isMiss() && is_array($item->get())) {
+            return self::$memo = $item->get();
+        }
+
+        $data = self::build();
+        $item->set($data);
+        $item->expiresAfter(self::LIFETIME);
+        $cache->save($item);
+
+        return self::$memo = $data;
     }
 
     public static function hash(): string

@@ -36,7 +36,6 @@ final class ErrorLogTest extends TestCase
     {
         $line = ErrorLog::format(new \RuntimeException("bad \xC3\x28 \xFF\xFE bytes\n"));
 
-        $this->assertIsString($line);
         $this->assertStringNotContainsString("\n", $line);
     }
 

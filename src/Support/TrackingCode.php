@@ -2,8 +2,8 @@
 
 namespace CookieManagerKit\Support;
 
-use Dom\HTMLDocument;
 use Dom\Element;
+use Dom\HTMLDocument;
 
 /**
  * Makes a pasted tracking snippet (Concrete's SEO tracking code) inert until its category is consented.
@@ -13,19 +13,6 @@ use Dom\Element;
  */
 final class TrackingCode
 {
-    public static function makeInert(string $code, string $category): string
-    {
-        if (!Text::isHandle($category)) {
-            return '';
-        }
-
-        try {
-            return self::rewrite($code, $category);
-        } catch (\Throwable) {
-            return ''; // fail closed
-        }
-    }
-
     private static function rewrite(string $code, string $category): string
     {
         $holder = HTMLDocument::createEmpty()->createElement('div');
@@ -68,6 +55,18 @@ final class TrackingCode
         // no accessor for it), so its markup is rewritten as a snippet of its own and put back.
         foreach (iterator_to_array($root->querySelectorAll('template')) as $template) {
             $template->innerHTML = self::rewrite($template->innerHTML, $category);
+        }
+    }
+    public static function makeInert(string $code, string $category): string
+    {
+        if (!Text::isHandle($category)) {
+            return '';
+        }
+
+        try {
+            return self::rewrite($code, $category);
+        } catch (\Throwable) {
+            return ''; // fail closed
         }
     }
 }

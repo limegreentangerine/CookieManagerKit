@@ -12,6 +12,17 @@ use CookieManagerKit\Support\{Catalog, ConfigRequest, ErrorLog, Output};
  */
 class Config
 {
+    /**
+     * @param array<string, string> $extra
+     */
+    private static function response(string $body, int $status, array $extra = []): Response
+    {
+        return new Response($body, $status, $extra + [
+            'Content-Type' => 'application/json; charset=utf-8',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Disposition' => 'inline; filename="config.json"',
+        ]);
+    }
     public function serve(): Response
     {
         $request = app(Request::class);
@@ -35,17 +46,5 @@ class Config
 
             return self::response('{"error":"unavailable"}', 500, ['Cache-Control' => 'no-store']);
         }
-    }
-
-    /**
-     * @param array<string, string> $extra
-     */
-    private static function response(string $body, int $status, array $extra = []): Response
-    {
-        return new Response($body, $status, $extra + [
-            'Content-Type' => 'application/json; charset=utf-8',
-            'X-Content-Type-Options' => 'nosniff',
-            'Content-Disposition' => 'inline; filename="config.json"',
-        ]);
     }
 }

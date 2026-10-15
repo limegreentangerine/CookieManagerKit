@@ -35,40 +35,6 @@ final class ControllerSecurityTest extends TestCase
     }
 
     /**
-     * @return string|null the parse error, or null when the source parses
-     */
-    public static function parseError(string $source): ?string
-    {
-        try {
-            token_get_all($source, TOKEN_PARSE);
-        } catch (\ParseError $error) {
-            return $error->getMessage() . ' on line ' . $error->getLine();
-        }
-
-        return null;
-    }
-
-    /**
-     * @return list<string> every problem in one controller source; a source that does not parse is itself the problem
-     */
-    public static function sourceProblems(string $source): array
-    {
-        $error = self::parseError($source);
-
-        if ($error !== null) {
-            return ['parse error: ' . $error];
-        }
-
-        $problems = [];
-
-        foreach (self::actions($source) as $action) {
-            $problems = [...$problems, ...self::actionProblems($source, $action)];
-        }
-
-        return [...$problems, ...self::redirectProblems($source), ...self::outputProblems($source)];
-    }
-
-    /**
      * @return list<string|array{int, string, int}> tokens without whitespace and comments
      */
     private static function significant(string $source): array
@@ -109,7 +75,219 @@ final class ControllerSecurityTest extends TestCase
      */
     private static function join(array $tokens): string
     {
-        return implode(' ', array_map(static fn ($token): string => self::text($token), $tokens));
+        return implode(' ', array_map(static fn($token): string => self::text($token), $tokens));
+    }
+
+    /**
+     * @param list<string|array{int, string, int}> $body
+     */
+    private static function compact(array $body): string
+    {
+        $compact = '';
+        $closing = null;
+
+        foreach ($body as $token) {
+            $id = self::id($token);
+            $text = self::text($token);
+
+            if ($closing !== null) {
+                // Inside an interpolated string or heredoc: nothing in here is code.
+                if ($id === $closing) {
+                    $closing = null;
+                }
+
+                continue;
+            }
+
+            if ($id === '"' || $id === '`') {
+                $closing = $id;
+                $text = "'s'";
+            } elseif ($id === T_START_HEREDOC) {
+                $closing = T_END_HEREDOC;
+                $text = "'s'";
+            } elseif ($id === T_CONSTANT_ENCAPSED_STRING) {
+                $text = substr($text, 1, -1) === 'submit' ? "'submit'" : "'s'";
+            }
+
+            // Keep words apart (`return false`) but otherwise stay compact.
+            if ($compact !== '' && preg_match('/[A-Za-z0-9_]$/', $compact) === 1 && preg_match('/^[A-Za-z0-9_]/', $text) === 1) {
+                $compact .= ' ';
+            }
+
+            $compact .= $text;
+        }
+
+        return $compact;
+    }
+
+    private static function guardBlockStops(string $block): bool
+    {
+        return preg_match('/(?:^|;)return(?![A-Za-z0-9_])/', $block) === 1
+            && preg_match('/(?:^|;)(?:if|else|elseif|while|for|foreach|switch|match|try)(?![A-Za-z0-9_])/', $block) !== 1;
+    }
+
+    private static function isRedirectCallee(string $text): bool
+    {
+        return preg_match('/(?:^|\\\\)Redirect$/', $text) === 1;
+    }
+
+    /**
+     * @param  list<string|array{int, string, int}>       $tokens
+     * @return list<list<string|array{int, string, int}>>
+     */
+    private static function splitTop(array $tokens, string $separator): array
+    {
+        $parts = [[]];
+        $depth = 0;
+
+        foreach ($tokens as $token) {
+            $id = self::id($token);
+
+            if (in_array($id, ['(', '[', '{'], true)) {
+                $depth++;
+            } elseif (in_array($id, [')', ']', '}'], true)) {
+                $depth--;
+            }
+
+            if ($depth === 0 && $id === $separator) {
+                $parts[] = [];
+
+                continue;
+            }
+
+            $parts[count($parts) - 1][] = $token;
+        }
+
+        return $parts;
+    }
+
+    /**
+     * @param list<string|array{int, string, int}>                                    $tokens
+     * @param array{params: list<string>, body: list<string|array{int, string, int}>} $method
+     */
+    private static function redirectExpressionSafe(array $tokens, array $method, int $level = 0): bool
+    {
+        if ($tokens === [] || $level > 5) {
+            return false;
+        }
+
+        $ternary = self::splitTop($tokens, '?');
+
+        if (count($ternary) > 2) {
+            return false;
+        }
+
+        if (count($ternary) === 2) {
+            $branches = self::splitTop($ternary[1], ':');
+
+            return count($branches) === 2
+                && self::redirectExpressionSafe($branches[0], $method, $level + 1)
+                && self::redirectExpressionSafe($branches[1], $method, $level + 1);
+        }
+
+        foreach (self::splitTop($tokens, '.') as $term) {
+            if (!self::redirectTermSafe($term, $method, $level)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param list<string|array{int, string, int}>                                    $term
+     * @param array{params: list<string>, body: list<string|array{int, string, int}>} $method
+     */
+    private static function redirectTermSafe(array $term, array $method, int $level): bool
+    {
+        $ids = array_map(static fn($token): int|string => self::id($token), $term);
+        $texts = array_map(static fn($token): string => self::text($token), $term);
+
+        if ($ids === [T_CONSTANT_ENCAPSED_STRING] || $ids === [T_LNUMBER]) {
+            return true;
+        }
+
+        if ($ids === [T_STRING, T_DOUBLE_COLON, T_STRING] && in_array($texts[0], ['self', 'static'], true)) {
+            return true;
+        }
+
+        if ($ids === [T_VARIABLE, T_OBJECT_OPERATOR, T_STRING, '(', ')'] && $texts[0] !== '$this' && $texts[2] === 'getID') {
+            return true;
+        }
+
+        if ($ids === [T_VARIABLE] && !in_array($texts[0], $method['params'], true)) {
+            $assignments = 0;
+            $body = $method['body'];
+
+            foreach ($body as $at => $token) {
+                if (self::text($token) !== $texts[0] || !isset($body[$at + 1]) || !in_array(self::id($body[$at + 1]), ['=', T_CONCAT_EQUAL], true)) {
+                    continue;
+                }
+
+                $assignments++;
+                $value = [];
+
+                for ($next = $at + 2; $next < count($body) && self::id($body[$next]) !== ';'; $next++) {
+                    $value[] = $body[$next];
+                }
+
+                if (!self::redirectExpressionSafe($value, $method, $level + 1)) {
+                    return false;
+                }
+            }
+
+            return $assignments > 0;
+        }
+
+        return false;
+    }
+
+    private static function keywordAction(string $name, bool $guarded): string
+    {
+        $guards = $guarded
+            ? "if (!\$this->request->isPost()) { return; }\n    if (!\$this->token->validate('submit')) { return; }\n"
+            : '';
+
+        return 'public function ' . $name . "(\$id)\n{\n    " . $guards . "    \$this->entityManager->flush();\n}";
+    }
+
+    private static function returnAction(string $statements): string
+    {
+        return "public function save()\n{\n    if (!\$this->request->isPost()) {\n        " . $statements . "\n    }\n    if (!\$this->token->validate('submit')) {\n        return;\n    }\n}";
+    }
+
+    /**
+     * @return string|null the parse error, or null when the source parses
+     */
+    public static function parseError(string $source): ?string
+    {
+        try {
+            token_get_all($source, TOKEN_PARSE);
+        } catch (\ParseError $error) {
+            return $error->getMessage() . ' on line ' . $error->getLine();
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string> every problem in one controller source; a source that does not parse is itself the problem
+     */
+    public static function sourceProblems(string $source): array
+    {
+        $error = self::parseError($source);
+
+        if ($error !== null) {
+            return ['parse error: ' . $error];
+        }
+
+        $problems = [];
+
+        foreach (self::actions($source) as $action) {
+            $problems = [...$problems, ...self::actionProblems($source, $action)];
+        }
+
+        return [...$problems, ...self::redirectProblems($source), ...self::outputProblems($source)];
     }
 
     /**
@@ -190,54 +368,6 @@ final class ControllerSecurityTest extends TestCase
     }
 
     /**
-     * @param list<string|array{int, string, int}> $body
-     */
-    private static function compact(array $body): string
-    {
-        $compact = '';
-        $closing = null;
-
-        foreach ($body as $token) {
-            $id = self::id($token);
-            $text = self::text($token);
-
-            if ($closing !== null) {
-                // Inside an interpolated string or heredoc: nothing in here is code.
-                if ($id === $closing) {
-                    $closing = null;
-                }
-
-                continue;
-            }
-
-            if ($id === '"' || $id === '`') {
-                $closing = $id;
-                $text = "'s'";
-            } elseif ($id === T_START_HEREDOC) {
-                $closing = T_END_HEREDOC;
-                $text = "'s'";
-            } elseif ($id === T_CONSTANT_ENCAPSED_STRING) {
-                $text = substr($text, 1, -1) === 'submit' ? "'submit'" : "'s'";
-            }
-
-            // Keep words apart (`return false`) but otherwise stay compact.
-            if ($compact !== '' && preg_match('/[A-Za-z0-9_]$/', $compact) === 1 && preg_match('/^[A-Za-z0-9_]/', $text) === 1) {
-                $compact .= ' ';
-            }
-
-            $compact .= $text;
-        }
-
-        return $compact;
-    }
-
-    private static function guardBlockStops(string $block): bool
-    {
-        return preg_match('/(?:^|;)return(?![A-Za-z0-9_])/', $block) === 1
-            && preg_match('/(?:^|;)(?:if|else|elseif|while|for|foreach|switch|match|try)(?![A-Za-z0-9_])/', $block) !== 1;
-    }
-
-    /**
      * @return list<string> problems with one action; the CSRF and method guards must be its first statements and stop execution
      */
     public static function actionProblems(string $source, string $method): array
@@ -313,122 +443,6 @@ final class ControllerSecurityTest extends TestCase
         }
 
         return $actions;
-    }
-
-    private static function isRedirectCallee(string $text): bool
-    {
-        return preg_match('/(?:^|\\\\)Redirect$/', $text) === 1;
-    }
-
-    /**
-     * @param list<string|array{int, string, int}> $tokens
-     * @return list<list<string|array{int, string, int}>>
-     */
-    private static function splitTop(array $tokens, string $separator): array
-    {
-        $parts = [[]];
-        $depth = 0;
-
-        foreach ($tokens as $token) {
-            $id = self::id($token);
-
-            if (in_array($id, ['(', '[', '{'], true)) {
-                $depth++;
-            } elseif (in_array($id, [')', ']', '}'], true)) {
-                $depth--;
-            }
-
-            if ($depth === 0 && $id === $separator) {
-                $parts[] = [];
-
-                continue;
-            }
-
-            $parts[count($parts) - 1][] = $token;
-        }
-
-        return $parts;
-    }
-
-    /**
-     * @param list<string|array{int, string, int}> $tokens
-     * @param array{params: list<string>, body: list<string|array{int, string, int}>} $method
-     */
-    private static function redirectExpressionSafe(array $tokens, array $method, int $level = 0): bool
-    {
-        if ($tokens === [] || $level > 5) {
-            return false;
-        }
-
-        $ternary = self::splitTop($tokens, '?');
-
-        if (count($ternary) > 2) {
-            return false;
-        }
-
-        if (count($ternary) === 2) {
-            $branches = self::splitTop($ternary[1], ':');
-
-            return count($branches) === 2
-                && self::redirectExpressionSafe($branches[0], $method, $level + 1)
-                && self::redirectExpressionSafe($branches[1], $method, $level + 1);
-        }
-
-        foreach (self::splitTop($tokens, '.') as $term) {
-            if (!self::redirectTermSafe($term, $method, $level)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @param list<string|array{int, string, int}> $term
-     * @param array{params: list<string>, body: list<string|array{int, string, int}>} $method
-     */
-    private static function redirectTermSafe(array $term, array $method, int $level): bool
-    {
-        $ids = array_map(static fn ($token): int|string => self::id($token), $term);
-        $texts = array_map(static fn ($token): string => self::text($token), $term);
-
-        if ($ids === [T_CONSTANT_ENCAPSED_STRING] || $ids === [T_LNUMBER]) {
-            return true;
-        }
-
-        if ($ids === [T_STRING, T_DOUBLE_COLON, T_STRING] && in_array($texts[0], ['self', 'static'], true)) {
-            return true;
-        }
-
-        if ($ids === [T_VARIABLE, T_OBJECT_OPERATOR, T_STRING, '(', ')'] && $texts[0] !== '$this' && $texts[2] === 'getID') {
-            return true;
-        }
-
-        if ($ids === [T_VARIABLE] && !in_array($texts[0], $method['params'], true)) {
-            $assignments = 0;
-            $body = $method['body'];
-
-            foreach ($body as $at => $token) {
-                if (self::text($token) !== $texts[0] || !isset($body[$at + 1]) || !in_array(self::id($body[$at + 1]), ['=', T_CONCAT_EQUAL], true)) {
-                    continue;
-                }
-
-                $assignments++;
-                $value = [];
-
-                for ($next = $at + 2; $next < count($body) && self::id($body[$next]) !== ';'; $next++) {
-                    $value[] = $body[$next];
-                }
-
-                if (!self::redirectExpressionSafe($value, $method, $level + 1)) {
-                    return false;
-                }
-            }
-
-            return $assignments > 0;
-        }
-
-        return false;
     }
 
     /**
@@ -818,20 +832,6 @@ PHP, false],
         ];
     }
 
-    private static function keywordAction(string $name, bool $guarded): string
-    {
-        $guards = $guarded
-            ? "if (!\$this->request->isPost()) { return; }\n    if (!\$this->token->validate('submit')) { return; }\n"
-            : '';
-
-        return 'public function ' . $name . "(\$id)\n{\n    " . $guards . "    \$this->entityManager->flush();\n}";
-    }
-
-    private static function returnAction(string $statements): string
-    {
-        return "public function save()\n{\n    if (!\$this->request->isPost()) {\n        " . $statements . "\n    }\n    if (!\$this->token->validate('submit')) {\n        return;\n    }\n}";
-    }
-
     #[DataProvider('actionProvider')]
     public function testActionGuardChecker(string $method, bool $ok): void
     {
@@ -904,7 +904,7 @@ PHP, false],
             'shell_exec' => ['public function a() { shell_exec($x); }', false],
             'popen' => ['public function a() { popen($x, \'r\'); }', false],
             'proc_open' => ['public function a() { proc_open($x, [], $p); }', false],
-            'inline html' => ["public function a() { ?>hello<?php }", false],
+            'inline html' => ['public function a() { ?>hello<?php }', false],
             'method call named exec' => ['public function a() { $this->connection->exec($x); }', true],
             'method named like a function' => ['public function a() { return $this->printf; }', true],
         ];

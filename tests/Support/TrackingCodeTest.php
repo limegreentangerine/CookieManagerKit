@@ -10,6 +10,25 @@ use CookieManagerKit\Support\TrackingCode;
 final class TrackingCodeTest extends TestCase
 {
     /**
+     * Re-parses the output the way a browser would and checks that nothing can run before consent.
+     */
+    private function assertAllScriptsInert(string $output, string $category = 'analytics', int $atLeast = 0): void
+    {
+        $holder = \Dom\HTMLDocument::createEmpty()->createElement('div');
+        $holder->innerHTML = $output;
+
+        $scripts = iterator_to_array($holder->querySelectorAll('script'));
+
+        $this->assertGreaterThanOrEqual($atLeast, count($scripts));
+
+        foreach ($scripts as $script) {
+            $this->assertSame('text/plain', $script->getAttribute('type'), $output);
+            $this->assertSame($category, $script->getAttribute('data-cmk-category'), $output);
+        }
+
+        $this->assertSame(0, $holder->querySelectorAll('noscript')->length, $output);
+    }
+    /**
      * @return array<string, array{string}>
      */
     public static function bypassShapes(): array
@@ -189,25 +208,5 @@ final class TrackingCodeTest extends TestCase
             '<meta name="google-site-verification" content="abc"><script type="text/plain" data-cmk-category="analytics">a()</script>',
             $inert,
         );
-    }
-
-    /**
-     * Re-parses the output the way a browser would and checks that nothing can run before consent.
-     */
-    private function assertAllScriptsInert(string $output, string $category = 'analytics', int $atLeast = 0): void
-    {
-        $holder = \Dom\HTMLDocument::createEmpty()->createElement('div');
-        $holder->innerHTML = $output;
-
-        $scripts = iterator_to_array($holder->querySelectorAll('script'));
-
-        $this->assertGreaterThanOrEqual($atLeast, count($scripts));
-
-        foreach ($scripts as $script) {
-            $this->assertSame('text/plain', $script->getAttribute('type'), $output);
-            $this->assertSame($category, $script->getAttribute('data-cmk-category'), $output);
-        }
-
-        $this->assertSame(0, $holder->querySelectorAll('noscript')->length, $output);
     }
 }

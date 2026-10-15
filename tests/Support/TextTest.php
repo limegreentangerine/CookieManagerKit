@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace CookieManagerKit\Tests\Support;
 
-use CookieManagerKit\Support\Text;
 use PHPUnit\Framework\TestCase;
+use CookieManagerKit\Support\Text;
 
 final class TextTest extends TestCase
 {

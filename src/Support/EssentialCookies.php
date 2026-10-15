@@ -9,10 +9,9 @@ namespace CookieManagerKit\Support;
  */
 final class EssentialCookies
 {
+    private const FIXED = ['ccmAuthUserHash', 'ConcreteSitemap-expand', 'dashboardPanelStatus', self::CONSENT_COOKIE];
     public const CONSENT_COOKIE = 'cmk_consent';
     public const DEFAULT_SESSION_NAME = 'CONCRETE';
-
-    private const FIXED = ['ccmAuthUserHash', 'ConcreteSitemap-expand', 'dashboardPanelStatus', self::CONSENT_COOKIE];
 
     /**
      * @return list<string>

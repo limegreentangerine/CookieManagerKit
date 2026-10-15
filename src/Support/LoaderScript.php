@@ -10,6 +10,11 @@ final class LoaderScript
 {
     private static ?string $source = null;
 
+    private static function isValidNonce(?string $nonce): bool
+    {
+        return $nonce !== null && preg_match('#^[A-Za-z0-9+/=_-]{8,128}\z#', $nonce) === 1;
+    }
+
     public static function source(): string
     {
         if (self::$source === null) {
@@ -27,7 +32,7 @@ final class LoaderScript
      * The boot data the loader reads. `nonce` tells the loader the page carries a CSP nonce, so it only activates
      * inert scripts bearing its own; it is true only when inline() will actually emit the nonce attribute.
      *
-     * @param list<string> $categories
+     * @param  list<string>                                                                         $categories
      * @return array{v: int, cats: list<string>, days: int, cfg: string, post: string, nonce: bool}
      */
     public static function boot(int $version, array $categories, int $lifetimeDays, string $configUrl, string $postUrl, ?string $nonce): array
@@ -50,10 +55,5 @@ final class LoaderScript
         $attribute = self::isValidNonce($nonce) ? ' nonce="' . Output::e($nonce) . '"' : '';
 
         return '<script' . $attribute . '>window.cmkBoot=' . Output::json($boot) . ';' . self::source() . '</script>';
-    }
-
-    private static function isValidNonce(?string $nonce): bool
-    {
-        return $nonce !== null && preg_match('#^[A-Za-z0-9+/=_-]{8,128}\z#', $nonce) === 1;
     }
 }

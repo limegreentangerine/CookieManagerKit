@@ -9,9 +9,9 @@ namespace CookieManagerKit\Support;
  */
 final class ConsentRequest
 {
+    private const MAX_POLICY_VERSION = 1000000;
     public const MAX_BYTES = 2048;
     public const MAX_CATEGORIES = 20;
-    private const MAX_POLICY_VERSION = 1000000;
 
     /**
      * @param list<string> $knownHandles

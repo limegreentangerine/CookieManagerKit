@@ -21,6 +21,35 @@ class ConsentManager
 
     private static bool $outputHooked = false;
 
+    /**
+     * A same-origin path, so the page works whichever host serves it (www or not) and whether or not pretty URLs
+     * are on.
+     */
+    private static function path(string $route): string
+    {
+        $path = parse_url((string) Url::to($route), PHP_URL_PATH);
+
+        return is_string($path) && str_starts_with($path, '/') ? $path : $route;
+    }
+
+    /**
+     * Sites with a Content-Security-Policy bind `cookie_manager_kit.csp_nonce` (a string, or a callable returning
+     * one) so the inline loader carries the request's nonce.
+     */
+    private static function nonce(): ?string
+    {
+        $app = app();
+
+        if (!$app->bound('cookie_manager_kit.csp_nonce')) {
+            return null;
+        }
+
+        $nonce = $app->make('cookie_manager_kit.csp_nonce');
+        $nonce = is_callable($nonce) ? $nonce() : $nonce;
+
+        return is_string($nonce) ? $nonce : null;
+    }
+
     public static function registerAssets(): void
     {
         $list = AssetList::getInstance();
@@ -55,7 +84,7 @@ class ConsentManager
             Catalog::lifetimeDays(),
             self::path('/cookie-manager/config/' . $locale . '.json') . '?v=' . Catalog::hash(),
             self::path('/cookie-manager/consent'),
-            $nonce
+            $nonce,
         );
 
         $controller->addHeaderItem(LoaderScript::inline($boot, $nonce));
@@ -91,34 +120,5 @@ class ConsentManager
         if ($changed) {
             $event->setArgument('contents', $contents);
         }
-    }
-
-    /**
-     * A same-origin path, so the page works whichever host serves it (www or not) and whether or not pretty URLs
-     * are on.
-     */
-    private static function path(string $route): string
-    {
-        $path = parse_url((string) Url::to($route), PHP_URL_PATH);
-
-        return is_string($path) && str_starts_with($path, '/') ? $path : $route;
-    }
-
-    /**
-     * Sites with a Content-Security-Policy bind `cookie_manager_kit.csp_nonce` (a string, or a callable returning
-     * one) so the inline loader carries the request's nonce.
-     */
-    private static function nonce(): ?string
-    {
-        $app = app();
-
-        if (!$app->bound('cookie_manager_kit.csp_nonce')) {
-            return null;
-        }
-
-        $nonce = $app->make('cookie_manager_kit.csp_nonce');
-        $nonce = is_callable($nonce) ? $nonce() : $nonce;
-
-        return is_string($nonce) ? $nonce : null;
     }
 }

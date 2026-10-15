@@ -3,17 +3,16 @@
 namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\CookieManager;
 
 use CookieManagerKit\Entity\Category;
-use CookieManagerKit\Support\{Catalog, SiteLocales, Text};
 use Concrete\Core\Page\Controller\DashboardPageController;
+use CookieManagerKit\Support\{Catalog, SiteLocales, Text};
 
 class Categories extends DashboardPageController
 {
+    private const URL = '/dashboard/cookie_manager/categories';
     public $helpers = [
         'form',
         'concrete/ui',
     ];
-
-    private const URL = '/dashboard/cookie_manager/categories';
 
     private function prepare(string $mode, ?Category $category = null): void
     {

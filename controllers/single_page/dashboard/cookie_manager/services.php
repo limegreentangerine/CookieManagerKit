@@ -3,17 +3,16 @@
 namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\CookieManager;
 
 use CookieManagerKit\Entity\{Category, Service};
-use CookieManagerKit\Support\{Catalog, SiteLocales, Text};
 use Concrete\Core\Page\Controller\DashboardPageController;
+use CookieManagerKit\Support\{Catalog, SiteLocales, Text};
 
 class Services extends DashboardPageController
 {
+    private const URL = '/dashboard/cookie_manager/services';
     public $helpers = [
         'form',
         'concrete/ui',
     ];
-
-    private const URL = '/dashboard/cookie_manager/services';
 
     private function prepare(string $mode, ?Service $service = null): void
     {

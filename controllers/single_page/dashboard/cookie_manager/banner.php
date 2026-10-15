@@ -3,18 +3,34 @@
 namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\CookieManager;
 
 use Concrete\Core\Page\Page;
-use CookieManagerKit\Support\{Catalog, SiteLocales, StyleRules, Text};
 use CookieManagerKit\Entity\{BannerContent, Settings};
 use Concrete\Core\Page\Controller\DashboardPageController;
+use CookieManagerKit\Support\{Catalog, SiteLocales, StyleRules, Text};
 
 class Banner extends DashboardPageController
 {
+    private const URL = '/dashboard/cookie_manager/banner';
     public $helpers = [
         'form',
         'concrete/ui',
     ];
 
-    private const URL = '/dashboard/cookie_manager/banner';
+    private function existingPageId(mixed $value): ?int
+    {
+        if (!is_string($value) && !is_int($value)) {
+            return null;
+        }
+
+        $cid = preg_match('/^\d+\z/', (string) $value) === 1 ? (int) $value : 0;
+
+        if ($cid < 1) {
+            return null;
+        }
+
+        $page = Page::getByID($cid);
+
+        return $page && !$page->isError() ? $cid : null;
+    }
 
     public function view()
     {
@@ -118,22 +134,5 @@ class Banner extends DashboardPageController
         $this->flash('success', t('Banner saved.'));
 
         return $this->buildRedirect(self::URL)->send();
-    }
-
-    private function existingPageId(mixed $value): ?int
-    {
-        if (!is_string($value) && !is_int($value)) {
-            return null;
-        }
-
-        $cid = preg_match('/^\d+\z/', (string) $value) === 1 ? (int) $value : 0;
-
-        if ($cid < 1) {
-            return null;
-        }
-
-        $page = Page::getByID($cid);
-
-        return $page && !$page->isError() ? $cid : null;
     }
 }

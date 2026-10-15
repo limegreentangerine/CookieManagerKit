@@ -9,6 +9,56 @@ namespace CookieManagerKit\Support;
 final class ConfigBuilder
 {
     /**
+     * One field from a per-locale map: own locale, then the default locale, then the fallback. Empty means "not set".
+     *
+     * @param array<string, mixed> $byLocale
+     */
+    private static function field(array $byLocale, string $locale, string $defaultLocale, string $key, string $fallback): string
+    {
+        foreach ([$locale, $defaultLocale] as $candidate) {
+            $row = $byLocale[$candidate] ?? null;
+            $value = is_array($row) ? ($row[$key] ?? '') : '';
+
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return $fallback;
+    }
+
+    /**
+     * @param array<string, mixed> $byLocale locale => string
+     */
+    private static function scalar(array $byLocale, string $locale, string $defaultLocale): string
+    {
+        foreach ([$locale, $defaultLocale] as $candidate) {
+            $value = $byLocale[$candidate] ?? '';
+
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<int, mixed> $categories
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function sorted(array $categories): array
+    {
+        $rows = array_values(array_filter($categories, 'is_array'));
+
+        usort($rows, static function (array $a, array $b): int {
+            return [(int) ($a['sort'] ?? 0), (string) ($a['handle'] ?? '')] <=> [(int) ($b['sort'] ?? 0), (string) ($b['handle'] ?? '')];
+        });
+
+        return $rows;
+    }
+    /**
      * @param array<string, mixed> $data
      * @param list<string>         $essentialCookies
      *
@@ -92,56 +142,5 @@ final class ConfigBuilder
         ];
 
         return ['version' => substr(sha1(Output::json($config)), 0, 12)] + $config;
-    }
-
-    /**
-     * One field from a per-locale map: own locale, then the default locale, then the fallback. Empty means "not set".
-     *
-     * @param array<string, mixed> $byLocale
-     */
-    private static function field(array $byLocale, string $locale, string $defaultLocale, string $key, string $fallback): string
-    {
-        foreach ([$locale, $defaultLocale] as $candidate) {
-            $row = $byLocale[$candidate] ?? null;
-            $value = is_array($row) ? ($row[$key] ?? '') : '';
-
-            if (is_string($value) && $value !== '') {
-                return $value;
-            }
-        }
-
-        return $fallback;
-    }
-
-    /**
-     * @param array<string, mixed> $byLocale locale => string
-     */
-    private static function scalar(array $byLocale, string $locale, string $defaultLocale): string
-    {
-        foreach ([$locale, $defaultLocale] as $candidate) {
-            $value = $byLocale[$candidate] ?? '';
-
-            if (is_string($value) && $value !== '') {
-                return $value;
-            }
-        }
-
-        return '';
-    }
-
-    /**
-     * @param array<int, mixed> $categories
-     *
-     * @return list<array<string, mixed>>
-     */
-    private static function sorted(array $categories): array
-    {
-        $rows = array_values(array_filter($categories, 'is_array'));
-
-        usort($rows, static function (array $a, array $b): int {
-            return [(int) ($a['sort'] ?? 0), (string) ($a['handle'] ?? '')] <=> [(int) ($b['sort'] ?? 0), (string) ($b['handle'] ?? '')];
-        });
-
-        return $rows;
     }
 }

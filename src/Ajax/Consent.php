@@ -3,9 +3,9 @@
 namespace CookieManagerKit\Ajax;
 
 use Concrete\Core\Http\Request;
-use CookieManagerKit\Support\{Catalog, ConsentRequest, ErrorLog, Output, RateLimit, RequestGuard};
 use Symfony\Component\HttpFoundation\Response;
 use CookieManagerKit\Consent\{ConsentChoice, ConsentRecorder};
+use CookieManagerKit\Support\{Catalog, ConsentRequest, ErrorLog, Output, RateLimit, RequestGuard};
 
 /**
  * Receives the choice a visitor made. Public and cacheable pages cannot carry a CSRF token, so it is defensive

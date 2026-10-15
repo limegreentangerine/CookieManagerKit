@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace CookieManagerKit\Tests\Support;
 
-use CookieManagerKit\Support\SiteLocales;
 use PHPUnit\Framework\TestCase;
+use CookieManagerKit\Support\SiteLocales;
 
 final class SiteLocalesTest extends TestCase
 {

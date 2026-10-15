@@ -18,6 +18,13 @@ use ClassKit\Entity\Core\UpdatedGuidEntity;
  */
 class Settings extends UpdatedGuidEntity
 {
+    private const TOKEN_PROPERTIES = [
+        'bg' => 'tokenBg',
+        'fg' => 'tokenFg',
+        'accent' => 'tokenAccent',
+        'buttonBg' => 'tokenButtonBg',
+        'buttonFg' => 'tokenButtonFg',
+    ];
     /**
      * @ORM\Column(type="string", length=16, nullable=false, options={"default": "bottom-right", "comment": "Banner position"})
      */
@@ -164,14 +171,6 @@ class Settings extends UpdatedGuidEntity
 
         return $this;
     }
-
-    private const TOKEN_PROPERTIES = [
-        'bg' => 'tokenBg',
-        'fg' => 'tokenFg',
-        'accent' => 'tokenAccent',
-        'buttonBg' => 'tokenButtonBg',
-        'buttonFg' => 'tokenButtonFg',
-    ];
 
     public function getToken(string $name): string
     {

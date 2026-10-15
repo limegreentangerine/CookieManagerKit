@@ -2,20 +2,19 @@
 
 namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\CookieManager;
 
-use CookieManagerKit\Entity\{BannerContent, Settings};
 use CookieManagerKit\Events\ConsentManager;
-use CookieManagerKit\Support\{Catalog, SiteLocales, StyleRules};
+use CookieManagerKit\Entity\{BannerContent, Settings};
 use Concrete\Core\Page\Controller\DashboardPageController;
+use CookieManagerKit\Support\{Catalog, SiteLocales, StyleRules};
 
 class Appearance extends DashboardPageController
 {
+    private const URL = '/dashboard/cookie_manager/appearance';
+    private const TOKENS = ['tokenBg' => 'bg', 'tokenFg' => 'fg', 'tokenAccent' => 'accent', 'tokenButtonBg' => 'buttonBg', 'tokenButtonFg' => 'buttonFg'];
     public $helpers = [
         'form',
         'concrete/ui',
     ];
-
-    private const URL = '/dashboard/cookie_manager/appearance';
-    private const TOKENS = ['tokenBg' => 'bg', 'tokenFg' => 'fg', 'tokenAccent' => 'accent', 'tokenButtonBg' => 'buttonBg', 'tokenButtonFg' => 'buttonFg'];
 
     public function view()
     {

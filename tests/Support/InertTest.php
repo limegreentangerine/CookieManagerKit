@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace CookieManagerKit\Tests\Support;
 
-use CookieManagerKit\Support\Inert;
 use PHPUnit\Framework\TestCase;
+use CookieManagerKit\Support\Inert;
 
 final class InertTest extends TestCase
 {

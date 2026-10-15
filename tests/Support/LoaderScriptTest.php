@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace CookieManagerKit\Tests\Support;
 
 use PHPUnit\Framework\TestCase;
-use CookieManagerKit\Support\LoaderScript;
 use CookieManagerKit\Support\Output;
+use CookieManagerKit\Support\LoaderScript;
 
 final class LoaderScriptTest extends TestCase
 {
@@ -66,7 +66,7 @@ final class LoaderScriptTest extends TestCase
     {
         $this->assertTrue(LoaderScript::boot(1, [], 1, '', '', 'abcDEF123456==')['nonce']);
 
-        foreach ([null, '', 'short', 'bad"nonce1234', "bad nonce1234", "line\nbreak12345", "trail12345678\n", "it's12345678"] as $bad) {
+        foreach ([null, '', 'short', 'bad"nonce1234', 'bad nonce1234', "line\nbreak12345", "trail12345678\n", "it's12345678"] as $bad) {
             $this->assertFalse(LoaderScript::boot(1, [], 1, '', '', $bad)['nonce'], (string) $bad);
         }
     }

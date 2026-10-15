@@ -85,26 +85,31 @@ use CookieManagerKit\Support\Output as O;
         </div>
 
         <ul class="nav nav-tabs mb-3" role="tablist">
-            <?php $index = 0; foreach ($locales as $locale => $label) { $tabId = 'cmk-svc-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $locale); ?>
+            <?php $index = 0;
+        foreach ($locales as $locale => $label) {
+            $tabId = 'cmk-svc-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $locale); ?>
                 <li class="nav-item" role="presentation">
                     <button type="button" class="nav-link <?php echo O::e($index === 0 ? 'active' : '') ?>" data-bs-toggle="tab" data-bs-target="#<?php echo O::e($tabId) ?>" role="tab">
                         <?php echo O::e($label) ?>
                         <?php if ($locale === $defaultLocale) { ?><span class="badge text-bg-secondary"><?php echo t('Default') ?></span><?php } ?>
                     </button>
                 </li>
-            <?php $index++; } ?>
+            <?php $index++;
+        } ?>
         </ul>
 
         <div class="tab-content mb-4">
-            <?php $index = 0; foreach ($locales as $locale => $label) {
-                $tabId = 'cmk-svc-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $locale);
-                $row = $isNew ? null : $service->getContent($locale);
-                ?>
+            <?php $index = 0;
+        foreach ($locales as $locale => $label) {
+            $tabId = 'cmk-svc-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $locale);
+            $row = $isNew ? null : $service->getContent($locale);
+            ?>
                 <div class="tab-pane fade <?php echo O::e($index === 0 ? 'show active' : '') ?>" id="<?php echo O::e($tabId) ?>" role="tabpanel">
                     <label class="form-label" for="<?php echo O::e($tabId) ?>-description"><?php echo t('What this service does') ?></label>
                     <textarea class="form-control" rows="3" maxlength="1000" id="<?php echo O::e($tabId) ?>-description" name="<?php echo O::e('content[' . $locale . '][description]') ?>"><?php echo O::e($row ? $row->getDescription() : '') ?></textarea>
                 </div>
-            <?php $index++; } ?>
+            <?php $index++;
+        } ?>
         </div>
 
         <div class="ccm-dashboard-form-actions-wrapper">

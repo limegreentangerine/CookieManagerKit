@@ -122,7 +122,10 @@
 		for (var i = 0; i < nodes.length; i++) {
 			var inert = nodes[i];
 
-			if (inert.hasAttribute('data-cmk-done') || granted.indexOf(inert.getAttribute('data-cmk-category')) === -1) {
+			if (
+				inert.hasAttribute('data-cmk-done') ||
+				granted.indexOf(inert.getAttribute('data-cmk-category')) === -1
+			) {
 				continue;
 			}
 
@@ -169,7 +172,11 @@
 		var list = [NECESSARY];
 
 		(Array.isArray(categories) ? categories : []).forEach(function (handle) {
-			if (typeof handle === 'string' && known.indexOf(handle) !== -1 && list.indexOf(handle) === -1) {
+			if (
+				typeof handle === 'string' &&
+				known.indexOf(handle) !== -1 &&
+				list.indexOf(handle) === -1
+			) {
 				list.push(handle);
 			}
 		});
@@ -192,7 +199,10 @@
 		}
 
 		activate();
-		emit('consent:changed', { categories: list.slice(), previous: previous ? previous.c.slice() : null });
+		emit('consent:changed', {
+			categories: list.slice(),
+			previous: previous ? previous.c.slice() : null
+		});
 
 		return list.slice();
 	}
@@ -222,7 +232,7 @@
 			if (typeof fn === 'function') {
 				(handlers[name] = handlers[name] || []).push(fn);
 			}
-		},
+		}
 	};
 
 	ready(activate);

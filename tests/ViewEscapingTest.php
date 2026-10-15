@@ -18,6 +18,11 @@ final class ViewEscapingTest extends TestCase
     private const ENCODER_PREFIXES = ['O::e(', 'O::json(', 'O::url('];
     private const HELPER_PREFIXES = ['$form->submit(', '$form->select(', '$form->hidden(', '$form->text(', '$form->textarea(', '$form->checkbox(', '$pageSelector->selectPage('];
 
+    private const FORBIDDEN_FUNCTIONS = [
+        'printf', 'vprintf', 'fprintf', 'vfprintf', 'print_r', 'var_dump', 'var_export', 'debug_zval_dump', 'highlight_string',
+        'readfile', 'fpassthru', 'passthru', 'system', 'exec', 'shell_exec', 'popen', 'proc_open',
+    ];
+
     /**
      * @return list<string>
      */
@@ -41,6 +46,47 @@ final class ViewEscapingTest extends TestCase
         sort($files);
 
         return $files;
+    }
+
+    private static function isSingleCall(string $expression): bool
+    {
+        $open = strpos($expression, '(');
+
+        if ($open === false) {
+            return false;
+        }
+
+        $length = strlen($expression);
+        $depth = 0;
+        $quote = null;
+
+        for ($i = $open; $i < $length; $i++) {
+            $char = $expression[$i];
+
+            if ($quote !== null) {
+                if ($char === '\\') {
+                    $i++;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === "'" || $char === '"') {
+                $quote = $char;
+            } elseif ($char === '(') {
+                $depth++;
+            } elseif ($char === ')') {
+                $depth--;
+
+                if ($depth === 0) {
+                    return $i === $length - 1;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -97,47 +143,6 @@ final class ViewEscapingTest extends TestCase
         }
 
         return $found;
-    }
-
-    private static function isSingleCall(string $expression): bool
-    {
-        $open = strpos($expression, '(');
-
-        if ($open === false) {
-            return false;
-        }
-
-        $length = strlen($expression);
-        $depth = 0;
-        $quote = null;
-
-        for ($i = $open; $i < $length; $i++) {
-            $char = $expression[$i];
-
-            if ($quote !== null) {
-                if ($char === '\\') {
-                    $i++;
-                } elseif ($char === $quote) {
-                    $quote = null;
-                }
-
-                continue;
-            }
-
-            if ($char === "'" || $char === '"') {
-                $quote = $char;
-            } elseif ($char === '(') {
-                $depth++;
-            } elseif ($char === ')') {
-                $depth--;
-
-                if ($depth === 0) {
-                    return $i === $length - 1;
-                }
-            }
-        }
-
-        return false;
     }
 
     public static function isSafe(string $expression): bool
@@ -201,11 +206,6 @@ final class ViewEscapingTest extends TestCase
 
         $this->assertSame([], $offenders, "Encode with O::e() / O::json() (see spec §8.2) or use a literal:\n" . implode("\n", $offenders));
     }
-
-    private const FORBIDDEN_FUNCTIONS = [
-        'printf', 'vprintf', 'fprintf', 'vfprintf', 'print_r', 'var_dump', 'var_export', 'debug_zval_dump', 'highlight_string',
-        'readfile', 'fpassthru', 'passthru', 'system', 'exec', 'shell_exec', 'popen', 'proc_open',
-    ];
 
     /**
      * @return list<string> print/eval/exit and output or process functions used in a view (the standard guard is allowed)

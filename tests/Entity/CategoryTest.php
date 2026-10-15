@@ -36,9 +36,9 @@ final class CategoryTest extends TestCase
         $category->setContent('en_GB', '<b>Analytics</b>', "Helps us <script>x</script>improve\n\n\n\nthe site");
         $category->setContent('cy_GB', 'Dadansoddeg', '');
 
-        $this->assertSame('Analytics', $category->getContent('en_GB')?->getTitle());
-        $this->assertStringNotContainsString('<', (string) $category->getContent('en_GB')?->getDescription());
-        $this->assertSame('Dadansoddeg', $category->getContent('cy_GB')?->getTitle());
+        $this->assertSame('Analytics', $category->getContent('en_GB')->getTitle());
+        $this->assertStringNotContainsString('<', (string) $category->getContent('en_GB')->getDescription());
+        $this->assertSame('Dadansoddeg', $category->getContent('cy_GB')->getTitle());
         $this->assertNull($category->getContent('fr_FR'));
         $this->assertCount(2, $category->getContents());
     }
@@ -50,7 +50,7 @@ final class CategoryTest extends TestCase
         $category->setContent('en_GB', 'Two', '');
 
         $this->assertCount(1, $category->getContents());
-        $this->assertSame('Two', $category->getContent('en_GB')?->getTitle());
+        $this->assertSame('Two', $category->getContent('en_GB')->getTitle());
     }
 
     public function testInvalidLocaleIsRejected(): void

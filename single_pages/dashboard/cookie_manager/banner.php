@@ -24,23 +24,27 @@ $labelFields = [
     <p class="text-muted"><?php echo t('Plain text only. Leave a language empty to use the default language for those visitors. Empty button labels use built-in English text.') ?></p>
 
     <ul class="nav nav-tabs mb-3" role="tablist">
-        <?php $index = 0; foreach ($locales as $locale => $label) { $tabId = 'cmk-tab-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $locale); ?>
+        <?php $index = 0;
+foreach ($locales as $locale => $label) {
+    $tabId = 'cmk-tab-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $locale); ?>
             <li class="nav-item" role="presentation">
                 <button type="button" class="nav-link <?php echo O::e($index === 0 ? 'active' : '') ?>" data-bs-toggle="tab" data-bs-target="#<?php echo O::e($tabId) ?>" role="tab">
                     <?php echo O::e($label) ?>
                     <?php if ($locale === $defaultLocale) { ?><span class="badge text-bg-secondary"><?php echo t('Default') ?></span><?php } ?>
                 </button>
             </li>
-        <?php $index++; } ?>
+        <?php $index++;
+} ?>
     </ul>
 
     <div class="tab-content mb-4">
-        <?php $index = 0; foreach ($locales as $locale => $label) {
-            $tabId = 'cmk-tab-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $locale);
-            $row = $contents[$locale] ?? null;
-            $name = 'content[' . $locale . ']';
-            $isDefault = $locale === $defaultLocale;
-            ?>
+        <?php $index = 0;
+foreach ($locales as $locale => $label) {
+    $tabId = 'cmk-tab-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $locale);
+    $row = $contents[$locale] ?? null;
+    $name = 'content[' . $locale . ']';
+    $isDefault = $locale === $defaultLocale;
+    ?>
             <div class="tab-pane fade <?php echo O::e($index === 0 ? 'show active' : '') ?>" id="<?php echo O::e($tabId) ?>" role="tabpanel">
                 <div class="form-group mb-3">
                     <label class="form-label" for="<?php echo O::e($tabId) ?>-title"><?php echo t('Heading') ?></label>
@@ -72,7 +76,8 @@ $labelFields = [
                     </div>
                 </div>
             </div>
-        <?php $index++; } ?>
+        <?php $index++;
+} ?>
     </div>
 
     <fieldset>
