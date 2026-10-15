@@ -1,5 +1,5 @@
 {
-	"name": "composer_package",
+	"name": "cookie_manager_kit",
 	"version": "1.0.0",
 	"description": "",
 	"main": "index.js",
@@ -11,16 +11,16 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/limegreentangerine/composer_package.git"
+		"url": "git+https://github.com/limegreentangerine/CookieManagerKit.git"
 	},
 	"keywords": [],
-	"author": "",
+	"author": "Dave Hendy <david@limegreentangerine.co.uk>",
 	"license": "ISC",
 	"type": "commonjs",
 	"bugs": {
-		"url": "https://github.com/limegreentangerine/composer_package/issues"
+		"url": "https://github.com/limegreentangerine/CookieManagerKit/issues"
 	},
-	"homepage": "https://github.com/limegreentangerine/composer_package#readme",
+	"homepage": "https://github.com/limegreentangerine/CookieManagerKit#readme",
 	"devDependencies": {
 		"prettier": "^3.9.6"
 	}

@@ -43,3 +43,10 @@ coverage/
 # node
 node_modules/
 node_modules
+
+#ai
+.codegraph/
+.codegraph
+.claude/
+.claude
+CLAUDE.md

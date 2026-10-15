@@ -1,11 +1,16 @@
 <?php
 
-namespace Concrete\Package\ComposerPackage;
+namespace Concrete\Package\CookieManagerKit;
 
-use Concrete\Core\Package\Package;
+use Concrete\Core\Entity\Package;
+use ClassKit\Package\PackageController;
+use ClassKit\Package\Traits\{AttributeTrait, BlockTrait, PageTrait};
 
-class Controller extends Package
+class Controller extends PackageController
 {
+    use AttributeTrait;
+    use BlockTrait;
+    use PageTrait;
     /**
      * The packages handle.
      * Note that this must be unique in the
@@ -13,7 +18,7 @@ class Controller extends Package
      *
      * @var string
      */
-    protected $pkgHandle = 'composer_package';
+    protected $pkgHandle = 'cookie_manager_kit';
 
     /**
      * The packages version.
@@ -83,7 +88,7 @@ class Controller extends Package
      * @var array
      */
     protected $pkgAutoloaderRegistries = [
-        'src' => '\ComposerPackage',
+        'src' => '\CookieManagerKit',
     ];
 
     /**
@@ -97,11 +102,18 @@ class Controller extends Package
 
     public function getPackageName()
     {
-        return t('composer_name');
+        return t('Cookie Manager');
     }
 
     public function getPackageDescription()
     {
-        return t('composer_description');
+        return t('ConcreteCMS package to manage Cookie Banner');
     }
+
+    public function installOrUpgrade(Package $pkg) {}
+
+    public function registerRoutes(): void {}
+
+    public function registerEvents(): void {}
+
 }
