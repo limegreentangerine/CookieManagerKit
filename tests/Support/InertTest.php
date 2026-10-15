@@ -45,4 +45,13 @@ final class InertTest extends TestCase
         $this->assertSame('', Inert::script('analytics', '//evil.example/a.js'));
         $this->assertSame('', Inert::script('analytics', '', ''));
     }
+
+    public function testInlineCodeCannotEnterTheDoubleEscapedState(): void
+    {
+        $html = Inert::script('analytics', '', 'a("<!--<script>"); b("</SCRIPT>"); c("<Script");');
+
+        $this->assertSame(1, substr_count(strtolower($html), '</script'));
+        $this->assertSame(1, substr_count(strtolower($html), '<script'));
+        $this->assertStringNotContainsString('<!--', $html);
+    }
 }

@@ -29,8 +29,9 @@ final class Inert
             $attributes .= ' data-cmk-type="' . $type . '"';
         }
 
-        // "</script" inside inline code would end the element early.
-        $body = (string) preg_replace('#</(script)#i', '<\\/$1', $inline);
+        // "</script", "<script" and "<!--" inside inline code can end the element early or put the parser in the
+        // double-escaped state, where our closing tag no longer closes it.
+        $body = (string) preg_replace(['#</(script)#i', '#<(script)#i', '#<!--#'], ['<\\/$1', '<\\$1', '<\\!--'], $inline);
 
         return '<script' . $attributes . '>' . $body . '</script>';
     }
