@@ -196,3 +196,33 @@
 		transform: translateY(-1px);
 	}
 }
+
+/* Appearance preview: show the banner in normal flow inside the dashboard instead of fixed to the window. */
+.cmk-preview-stage {
+	padding: 24px;
+	background: repeating-linear-gradient(45deg, #f1f1f1, #f1f1f1 10px, #e8e8e8 10px, #e8e8e8 20px);
+	border-radius: 6px;
+}
+
+.cmk-preview-stage .cmk {
+	position: relative;
+	inset: auto;
+	width: auto;
+	max-width: 440px;
+	margin: 0 auto;
+	transform: none;
+}
+
+.cmk-preview-stage .cmk[data-position='bottom-bar'] {
+	max-width: none;
+	border-radius: var(--cmk-radius);
+}
+
+.cmk-preview-stage .cmk[data-position='center-modal'] {
+	max-width: 560px;
+	box-shadow: none;
+}
+
+.cmk-preview-stage .cmk[data-position='center-modal'][data-shadow='on'] {
+	box-shadow: 0 8px 30px rgb(0 0 0 / 25%);
+}
