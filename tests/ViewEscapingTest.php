@@ -63,6 +63,10 @@ final class ViewEscapingTest extends TestCase
             for ($i++; $i < $count; $i++) {
                 $token = $tokens[$i];
 
+                if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
+                }
+
                 if (is_array($token) && $token[0] === T_CLOSE_TAG) {
                     break;
                 }
@@ -183,22 +187,75 @@ final class ViewEscapingTest extends TestCase
         $this->assertSame([], $offenders, "Encode with O::e() / O::json() (see spec §8.2) or use a literal:\n" . implode("\n", $offenders));
     }
 
+    private const FORBIDDEN_FUNCTIONS = [
+        'printf', 'vprintf', 'fprintf', 'print_r', 'var_dump', 'var_export', 'readfile', 'fpassthru',
+        'passthru', 'system', 'exec', 'shell_exec', 'popen', 'proc_open',
+    ];
+
+    /**
+     * @return list<string> print/eval/exit and output or process functions used in a view (the standard guard is allowed)
+     */
+    public static function outputConstructProblems(string $source): array
+    {
+        // The standard Concrete direct-access guard is the one permitted use of die.
+        $tokens = [];
+
+        foreach (token_get_all(str_replace("defined('C5_EXECUTE') or die('Access Denied.')", '', $source)) as $token) {
+            if (!is_array($token) || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                $tokens[] = $token;
+            }
+        }
+
+        $problems = [];
+
+        foreach ($tokens as $at => $token) {
+            if (!is_array($token)) {
+                continue;
+            }
+
+            if (in_array($token[0], [T_PRINT, T_EVAL, T_EXIT], true)) {
+                $problems[] = $token[1];
+            } elseif (in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)
+                && in_array(ltrim($token[1], '\\'), self::FORBIDDEN_FUNCTIONS, true)
+                && ($tokens[$at + 1] ?? null) === '(') {
+                $problems[] = $token[1] . '()';
+            }
+        }
+
+        return $problems;
+    }
+
     public function testViewsNeverUseOtherOutputConstructs(): void
     {
         $offenders = [];
 
         foreach (self::views() as $file) {
-            // The standard Concrete direct-access guard is the one permitted use of die.
-            $source = str_replace("defined('C5_EXECUTE') or die('Access Denied.')", '', (string) file_get_contents($file));
-
-            foreach (token_get_all($source) as $token) {
-                if (is_array($token) && in_array($token[0], [T_PRINT, T_EVAL, T_EXIT], true)) {
-                    $offenders[] = substr($file, strlen(dirname(__DIR__)) + 1) . ': ' . $token[1];
-                }
+            foreach (self::outputConstructProblems((string) file_get_contents($file)) as $problem) {
+                $offenders[] = substr($file, strlen(dirname(__DIR__)) + 1) . ': ' . $problem;
             }
         }
 
         $this->assertSame([], $offenders);
+    }
+
+    public function testOutputFunctionsInAViewAreReported(): void
+    {
+        $this->assertSame(['printf()'], self::outputConstructProblems("<?php printf('<b>%s</b>', \$name) ?>"));
+        $this->assertSame(['print_r()'], self::outputConstructProblems('<?php print_r($a); ?>'));
+        $this->assertSame(['var_dump()'], self::outputConstructProblems('<?php var_dump($a); ?>'));
+        $this->assertSame(['\\printf()'], self::outputConstructProblems('<?php \\printf($a); ?>'));
+        $this->assertSame(['die'], self::outputConstructProblems('<?php die("x"); ?>'));
+        $this->assertSame([], self::outputConstructProblems("<?php defined('C5_EXECUTE') or die('Access Denied.'); ?>"));
+        $this->assertSame([], self::outputConstructProblems('<?php // print_r($a) ?><?php echo O::e(\'printf(\'); ?>'));
+    }
+
+    public function testCommentsCannotHideRawOutput(): void
+    {
+        $source = "<?= O::e(\$a /* ( */) . \$b // )\n?>";
+
+        $this->assertSame(['O::e($a ) . $b'], self::expressions($source));
+        $this->assertFalse(self::isSafe(self::expressions($source)[0]));
+        $this->assertSame(['O::e($a)'], self::expressions('<?= O::e($a) /* note; */ ?>'));
     }
 
     /**
