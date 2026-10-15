@@ -5,10 +5,17 @@ declare(strict_types=1);
 namespace CookieManagerKit\Tests\Events;
 
 use PHPUnit\Framework\TestCase;
+use Concrete\Core\Page\Page;
 use CookieManagerKit\Events\ConsentManager;
 
 final class ConsentManagerNonceTest extends TestCase
 {
+    public static function setUpBeforeClass(): void
+    {
+        // Concrete's class files refuse to load without it.
+        defined('C5_EXECUTE') || define('C5_EXECUTE', true);
+    }
+
     public function testStringIsItsOwnNonce(): void
     {
         $this->assertSame('abcd1234efgh', ConsentManager::nonceFrom('abcd1234efgh'));
@@ -140,5 +147,102 @@ final class ConsentManagerNonceTest extends TestCase
         $contents = '<p>nothing here</p>';
 
         $this->assertSame($contents, ConsentManager::rewriteSnippets($contents, ['', '<script>zzz()</script>'], null, static function (): void {}));
+    }
+
+    public function testRewriteSnippetsInertsBothWhenTheFooterContainsTheHeaderSnippet(): void
+    {
+        $header = '<script>a()</script>';
+        $footer = '<script>a()</script><script>b()</script>';
+        $contents = '<head>' . $header . '</head><body>x' . $footer . '</body>';
+
+        $out = ConsentManager::rewriteSnippets($contents, [$header, $footer], null, static function (): void {
+            throw new \LogicException('no error expected');
+        });
+
+        $this->assertStringNotContainsString('<script>', $out);
+        $this->assertSame(3, substr_count($out, 'type="text/plain" data-cmk-category="analytics"'));
+        $this->assertStringContainsString('b()', $out);
+    }
+
+    public function testRewriteSnippetsHandlesIdenticalHeaderAndFooter(): void
+    {
+        $snippet = '<script>a()</script>';
+        $out = ConsentManager::rewriteSnippets('<head>' . $snippet . '</head><body>' . $snippet . '</body>', [$snippet, $snippet], null, static function (): void {});
+
+        $this->assertStringNotContainsString('<script>', $out);
+        $this->assertSame(2, substr_count($out, 'data-cmk-category="analytics"'));
+    }
+
+    public function testRewriteSnippetsRemovesOnlyTheThrowingSnippetAndReportsEachThrowOnce(): void
+    {
+        $errors = [];
+        $out = ConsentManager::rewriteSnippets(
+            '<p>1</p><script>bad()</script><p>2</p><script>good()</script><p>3</p>',
+            ['<script>bad()</script>', '<script>good()</script>'],
+            null,
+            static function (\Throwable $e) use (&$errors): void {
+                $errors[] = $e->getMessage();
+            },
+            static function (string $code): string {
+                if (str_contains($code, 'bad')) {
+                    throw new \RuntimeException('bad snippet');
+                }
+
+                return '[inert]';
+            },
+        );
+
+        $this->assertSame('<p>1</p><p>2</p>[inert]<p>3</p>', $out);
+        $this->assertSame(['bad snippet'], $errors);
+    }
+
+    public function testRewriteSnippetsLeavesContentsUntouchedWhenNothingMatches(): void
+    {
+        $contents = '<p>nothing</p>';
+        $called = false;
+
+        $out = ConsentManager::rewriteSnippets($contents, ['<script>a()</script>', ''], null, static function (): void {}, static function () use (&$called): string {
+            $called = true;
+
+            return 'x';
+        });
+
+        $this->assertSame($contents, $out);
+        $this->assertFalse($called);
+    }
+
+    public function testRewriteSnippetsNeverRewritesAReplacementAgain(): void
+    {
+        $out = ConsentManager::rewriteSnippets('<i>A</i>', ['A', 'B'], null, static function (): void {}, static fn(string $code): string => $code === 'A' ? 'B' : 'C');
+
+        $this->assertSame('<i>B</i>', $out);
+    }
+
+    public function testBeforeRenderClosesTheGateForAnExcludedPageAndOpensItForAPublicOne(): void
+    {
+        $excluded = $this->createStub(Page::class);
+        $excluded->method('isError')->willReturn(true);
+
+        $public = $this->createStub(Page::class);
+        $public->method('isError')->willReturn(false);
+        $public->method('isAdminArea')->willReturn(false);
+        $public->method('isEditMode')->willReturn(false);
+        $public->method('isMasterCollection')->willReturn(false);
+        $public->method('getCollectionPath')->willReturn('/about');
+        $public->method('getPageController')->willThrowException(new \RuntimeException('no container in unit tests'));
+
+        try {
+            // A public page opens the gate (the risky work after it throws here, as there is no container).
+            ConsentManager::beforeRender($public);
+        } catch (\Throwable) {
+        }
+
+        $this->assertTrue(ConsentManager::isActive(), 'opened right after the exclusion checks, before any risky work');
+
+        ConsentManager::beforeRender($excluded);
+        $this->assertFalse(ConsentManager::isActive());
+
+        ConsentManager::beforeRender(null);
+        $this->assertFalse(ConsentManager::isActive());
     }
 }

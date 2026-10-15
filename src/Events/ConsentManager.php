@@ -52,11 +52,16 @@ class ConsentManager
         }
     }
 
-    private static function beforeRender(): void
+    /**
+     * The gate is closed first, so a flag left open by an earlier request on a long-lived worker (a render that never
+     * reached its page output) cannot make this request's excluded page act; it opens again only after the
+     * exclusion checks below.
+     */
+    public static function beforeRender(?Page $page): void
     {
-        $page = Page::getCurrentPage();
+        self::$active = false;
 
-        if (!$page || $page->isError() || $page->isAdminArea() || $page->isEditMode() || $page->isMasterCollection()) {
+        if (!$page instanceof Page || $page->isError() || $page->isAdminArea() || $page->isEditMode() || $page->isMasterCollection()) {
             return;
         }
 
@@ -143,7 +148,8 @@ class ConsentManager
 
     public static function onBeforeRender(): void
     {
-        self::guarded(self::beforeRender(...));
+        self::reset();
+        self::guarded(static fn() => self::beforeRender(Page::getCurrentPage()));
     }
 
     /**
@@ -178,8 +184,8 @@ class ConsentManager
     }
 
     /**
-     * Pure: makes each snippet found verbatim in $contents inert. A snippet whose rewrite throws, or comes back
-     * empty, is removed from the output rather than left live.
+     * Pure: makes each snippet found verbatim in $contents inert, all in one pass. A snippet whose rewrite throws, or
+     * comes back empty, is removed from the output rather than left live.
      *
      * @param list<string>                                     $snippets
      * @param callable(\Throwable): void                       $onError
@@ -188,26 +194,28 @@ class ConsentManager
     public static function rewriteSnippets(string $contents, array $snippets, ?string $nonce, callable $onError, ?callable $rewriter = null): string
     {
         $rewriter ??= TrackingCode::makeInert(...);
+        $map = [];
 
         foreach ($snippets as $code) {
-            if ($code === '' || !str_contains($contents, $code)) {
+            if ($code === '' || isset($map[$code]) || !str_contains($contents, $code)) {
                 continue;
             }
 
             try {
-                $replacement = $rewriter($code, self::TRACKING_CATEGORY, $nonce);
+                $map[$code] = $rewriter($code, self::TRACKING_CATEGORY, $nonce);
             } catch (\Throwable $e) {
-                $replacement = '';
+                $map[$code] = '';
 
                 try {
                     $onError($e);
                 } catch (\Throwable) {
                 }
             }
-
-            $contents = str_replace($code, $replacement, $contents);
         }
 
-        return $contents;
+        // One simultaneous pass (longest match first, replacements never searched again): replacing snippet by
+        // snippet lets an early replacement rewrite part of a later, longer snippet so that it no longer matches
+        // and stays live.
+        return $map === [] ? $contents : strtr($contents, $map);
     }
 }
