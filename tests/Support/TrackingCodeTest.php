@@ -10,7 +10,18 @@ use CookieManagerKit\Support\TrackingCode;
 final class TrackingCodeTest extends TestCase
 {
     /**
-     * Re-parses the output the way a browser would and checks that nothing can run before consent.
+     * Independent of the production check: would a browser execute a script with this type attribute?
+     */
+    private function runs(?string $type): bool
+    {
+        $essence = strtolower(trim(explode(';', (string) $type)[0], " \t\n\r\f"));
+
+        return $essence === '' || $essence === 'module' || preg_match('#(?:java|ecma|j|live)script#', $essence) === 1;
+    }
+
+    /**
+     * Re-parses the output the way a browser would and checks that nothing can run before consent: every script
+     * is either inert (type text/plain plus our category) or of a type no browser executes.
      */
     private function assertAllScriptsInert(string $output, string $category = 'analytics', int $atLeast = 0): void
     {
@@ -22,8 +33,12 @@ final class TrackingCodeTest extends TestCase
         $this->assertGreaterThanOrEqual($atLeast, count($scripts));
 
         foreach ($scripts as $script) {
-            $this->assertSame('text/plain', $script->getAttribute('type'), $output);
-            $this->assertSame($category, $script->getAttribute('data-cmk-category'), $output);
+            $this->assertFalse($this->runs($script->getAttribute('type')), $output);
+
+            if ($script->getAttribute('data-cmk-category') !== null) {
+                $this->assertSame('text/plain', $script->getAttribute('type'), $output);
+                $this->assertSame($category, $script->getAttribute('data-cmk-category'), $output);
+            }
         }
 
         $this->assertSame(0, $holder->querySelectorAll('noscript')->length, $output);
@@ -162,11 +177,13 @@ final class TrackingCodeTest extends TestCase
 
     public function testHostileTypeValuesAreNotCarriedOver(): void
     {
-        $inert = TrackingCode::makeInert('<script type="x&quot; onerror=&quot;alert(1)">x()</script>', 'analytics');
+        // A JavaScript type with a hostile parameter is made inert; the parameter is not carried over.
+        $inert = TrackingCode::makeInert('<script type="text/javascript; x=&quot; onerror=&quot;alert(1)">x()</script>', 'analytics');
 
         $this->assertStringNotContainsString('onerror', $inert);
         $this->assertStringNotContainsString('data-cmk-type', $inert);
         $this->assertAllScriptsInert($inert, 'analytics', 1);
+        $this->assertStringContainsString('data-cmk-category="analytics"', $inert);
     }
 
     public function testExistingCmkAttributesCannotOverrideTheCategory(): void
@@ -278,6 +295,105 @@ final class TrackingCodeTest extends TestCase
             $this->assertAllScriptsInert($output, 'analytics', 2);
             $this->assertSame(['', ''], $this->nonces0($output), (string) $nonce);
             $this->assertStringNotContainsString('pasted-nonce-1', $output);
+        }
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function dataBlocks(): array
+    {
+        return [
+            'ld+json' => ['<script type="application/ld+json" id="org" nonce="pasted-nonce-1" data-x="1">{"@context":"https://schema.org","@type":"Organization"}</script>'],
+            'importmap' => ['<script type="importmap">{"imports":{"a":"/a.js"}}</script>'],
+            'speculationrules' => ['<script type="speculationrules">{"prerender":[]}</script>'],
+            'text/plain' => ['<script type="text/plain" id="x">hello</script>'],
+            'text/template' => ['<script type="text/template"><div></div></script>'],
+            'unknown mime' => ['<script type="text/foo">x()</script>'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('dataBlocks')]
+    public function testNonExecutableDataBlocksAreLeftExactlyAsParsed(string $block): void
+    {
+        $this->assertSame($block, TrackingCode::makeInert($block, 'analytics', 'abcd1234EFGH'));
+    }
+
+    public function testMixedSnippetOnlyInertsTheExecutableScript(): void
+    {
+        $ld = '<script type="application/ld+json">{"@type":"Thing"}</script>';
+        $output = TrackingCode::makeInert($ld . '<script async src="https://x.example/a.js"></script>', 'analytics', 'abcd1234EFGH');
+
+        $this->assertStringStartsWith($ld, $output);
+        $this->assertAllScriptsInert($output, 'analytics', 2);
+        $this->assertSame(1, substr_count($output, 'data-cmk-category'));
+        $this->assertSame(1, substr_count($output, 'nonce='));
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function executableTypes(): array
+    {
+        return [
+            'charset parameter' => ['text/javascript; charset=utf-8', 'text/javascript'],
+            'uppercase module' => ['MODULE', 'module'],
+            'padded' => ["  Application/JavaScript \n", 'application/javascript'],
+            'jscript' => ['text/jscript', 'text/jscript'],
+            'ecmascript' => ['application/ecmascript', 'application/ecmascript'],
+            'legacy versioned' => ['text/javascript1.3', 'text/javascript1.3'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('executableTypes')]
+    public function testJavascriptMimeTypesAndModulesAreMadeInert(string $type, string $remembered): void
+    {
+        $output = TrackingCode::makeInert('<script type="' . $type . '" src="/a.js"></script>', 'analytics');
+
+        $this->assertAllScriptsInert($output, 'analytics', 1);
+        $this->assertStringContainsString('data-cmk-category="analytics"', $output);
+        $this->assertSame(1, substr_count($output, 'type="text/plain"'));
+
+        if (!in_array($remembered, ['text/javascript', 'application/javascript'], true)) {
+            $this->assertStringContainsString('data-cmk-type="' . $remembered . '"', $output);
+        }
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function roundTripProbes(): array
+    {
+        return [
+            'svg style attribute' => ['<svg></p><style><a id="</style><script src=//evil.example/y.js></script>">'],
+            'math mglyph' => ['<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;/mglyph&gt;&lt;script src=//evil.example/x.js&gt;&lt;/script&gt;">'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('roundTripProbes')]
+    public function testRoundTripMutationProbesNeverYieldALiveScript(string $code): void
+    {
+        $output = TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH');
+
+        // Either refused outright, or every script a browser finds in the re-parse is inert.
+        if ($output === '') {
+            $this->addToAssertionCount(1);
+
+            return;
+        }
+
+        $this->assertAllScriptsInert($output);
+    }
+
+    public function testOutputIsAFixedPoint(): void
+    {
+        foreach ([
+            '<script>a()</script><meta name="x" content="y"><script type="module" src="/m.js"></script>',
+            '<script type="application/ld+json">{}</script><script src="a.js"></script><template><script>t()</script></template>',
+        ] as $code) {
+            $once = TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH');
+            $this->assertNotSame('', $once);
+            $this->assertSame($once, TrackingCode::makeInert($once, 'analytics', 'abcd1234EFGH'));
         }
     }
 }
