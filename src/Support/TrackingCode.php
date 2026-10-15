@@ -53,14 +53,16 @@ final class TrackingCode
     }
 
     /**
-     * @param array{scripts: int, inert: int}|null $stats filled for the top-level fragment only
+     * @param bool                                 $ownOutput true only when checking that our own output is a fixed point: a
+     *                                                        text/plain script of our category is then ours, not pasted
+     * @param array{scripts: int, inert: int}|null $stats     filled for the top-level fragment only
      * @param-out array{scripts: int, inert: int} $stats
      */
-    private static function rewrite(string $code, string $category, ?string $nonce, ?array &$stats = null): string
+    private static function rewrite(string $code, string $category, ?string $nonce, bool $ownOutput = false, ?array &$stats = null): string
     {
         $holder = self::parse($code);
 
-        $stats = self::process($holder, $category, $nonce);
+        $stats = self::process($holder, $category, $nonce, $ownOutput);
 
         return $holder->innerHTML;
     }
@@ -68,7 +70,7 @@ final class TrackingCode
     /**
      * @return array{scripts: int, inert: int} every script in the fragment, and how many of them were made inert
      */
-    private static function process(Element $root, string $category, ?string $nonce): array
+    private static function process(Element $root, string $category, ?string $nonce, bool $ownOutput): array
     {
         // Tracking snippets never need <svg> or <math>, and foreign content is where the HTML parser's fragment and
         // document modes disagree (a stray <p> leaves it only in a document), so it is refused before anything else.
@@ -87,9 +89,25 @@ final class TrackingCode
             ++$scripts;
             $type = (string) $script->getAttribute('type'); // the parser already kept the first duplicate
 
-            // Not executed by any browser, so nothing to hold back. Its attributes (a pasted nonce included) stay
-            // as pasted: this element can never be activated by the loader, which only touches our own scripts.
+            // Not executed by any browser, so nothing to hold back and the rest stays as parsed. But the loader
+            // activates any script[type="text/plain"][data-cmk-category], so pasted data-cmk-* attributes (a forged
+            // category) are always removed, and on a text/plain script a pasted nonce goes too (it would pass the
+            // loader's nonce check).
             if (!self::isExecutable($type)) {
+                $plain = self::essence($type) === 'text/plain';
+
+                if ($ownOutput && $plain && $script->getAttribute('data-cmk-category') === $category) {
+                    continue;
+                }
+
+                foreach (iterator_to_array($script->attributes) as $attribute) {
+                    $name = strtolower($attribute->nodeName);
+
+                    if (str_starts_with($name, 'data-cmk-') || ($plain && $name === 'nonce')) {
+                        $script->removeAttribute($attribute->nodeName);
+                    }
+                }
+
                 continue;
             }
 
@@ -120,7 +138,7 @@ final class TrackingCode
         // A template's content is a separate fragment that querySelectorAll does not enter (and PHP exposes
         // no accessor for it), so its markup is rewritten as a snippet of its own and put back.
         foreach (iterator_to_array($root->querySelectorAll('template')) as $template) {
-            $template->innerHTML = self::rewrite($template->innerHTML, $category, $nonce);
+            $template->innerHTML = self::rewrite($template->innerHTML, $category, $nonce, $ownOutput);
         }
 
         return ['scripts' => $scripts, 'inert' => $inert];
@@ -185,7 +203,7 @@ final class TrackingCode
             }
         }
 
-        return self::rewrite($output, $category, $nonce) === $output;
+        return self::rewrite($output, $category, $nonce, true) === $output;
     }
 
     /**
@@ -200,7 +218,7 @@ final class TrackingCode
         }
 
         try {
-            $output = self::rewrite($code, $category, $nonce, $stats);
+            $output = self::rewrite($code, $category, $nonce, false, $stats);
 
             return self::verify($output, $category, $nonce, $stats) ? $output : '';
         } catch (\Throwable) {

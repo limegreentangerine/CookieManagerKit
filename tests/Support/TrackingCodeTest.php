@@ -336,6 +336,68 @@ final class TrackingCodeTest extends TestCase
         $this->assertSame($block, TrackingCode::makeInert($block, 'analytics', 'abcd1234EFGH'));
     }
 
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function pastedLoaderBaits(): array
+    {
+        return [
+            'text/plain necessary' => ['<script type="text/plain" data-cmk-category="necessary" src="//evil.example/a.js"></script>'],
+            'uppercase TEXT/PLAIN' => ['<script type="TEXT/PLAIN" data-cmk-category="necessary" src="//evil.example/a.js"></script>'],
+            'padded type' => ['<script type=" text/plain " data-cmk-category="necessary" src="//evil.example/a.js"></script>'],
+            'with remembered type' => ['<script type="text/plain" data-cmk-category="necessary" data-cmk-type="module" src="//evil.example/a.js"></script>'],
+            'uppercase attribute names' => ['<script type="text/plain" DATA-CMK-CATEGORY="necessary" Data-Cmk-Type="module" src="//evil.example/a.js"></script>'],
+            'other data type' => ['<script type="application/ld+json" data-cmk-category="necessary">{}</script>'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('pastedLoaderBaits')]
+    public function testPastedCmkAttributesAreStrippedFromUntouchedScripts(string $bait): void
+    {
+        foreach ([null, 'abcd1234EFGH'] as $nonce) {
+            $output = TrackingCode::makeInert($bait, 'analytics', $nonce);
+
+            $this->assertStringNotContainsStringIgnoringCase('data-cmk-', $output);
+            $this->assertStringNotContainsString('necessary', $output);
+            $this->assertStringContainsString('<script', $output);
+        }
+    }
+
+    public function testPastedNonceIsRemovedFromAPlainTextScriptButNotFromOtherDataBlocks(): void
+    {
+        $plain = TrackingCode::makeInert('<script type=" Text/Plain " nonce="pasted-nonce-1" id="p">x</script>', 'analytics', 'abcd1234EFGH');
+        $this->assertSame('<script type=" Text/Plain " id="p">x</script>', $plain);
+
+        $ld = '<script type="application/ld+json" nonce="pasted-nonce-1" data-x="1">{}</script>';
+        $this->assertSame($ld, TrackingCode::makeInert($ld, 'analytics', 'abcd1234EFGH'));
+    }
+
+    public function testLdJsonKeepsEverythingButCmkAttributes(): void
+    {
+        $output = TrackingCode::makeInert('<script type="application/ld+json" id="org" data-cmk-category="necessary" nonce="n1n1n1n1" data-x="1">{"@type":"Thing"}</script>', 'analytics');
+
+        $this->assertSame('<script type="application/ld+json" id="org" nonce="n1n1n1n1" data-x="1">{"@type":"Thing"}</script>', $output);
+    }
+
+    public function testLoaderContractOnlyOurOwnScriptsMatchTheActivationSelector(): void
+    {
+        $code = '<script>a()</script>'
+            . '<script type="text/plain" data-cmk-category="necessary" src="//evil.example/a.js"></script>'
+            . '<script type="TEXT/PLAIN" data-cmk-category="necessary">b()</script>';
+        $output = TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH');
+
+        foreach ($this->parses($output) as $root) {
+            $matched = $root->querySelectorAll('script[type="text/plain"][data-cmk-category]');
+
+            $this->assertSame(1, $matched->length, $output);
+            $this->assertSame('analytics', $matched[0]->getAttribute('data-cmk-category'));
+            $this->assertSame('abcd1234EFGH', $matched[0]->getAttribute('nonce'));
+            $this->assertNull($matched[0]->getAttribute('src'));
+        }
+
+        $this->assertStringNotContainsString('necessary', $output);
+    }
+
     public function testMixedSnippetOnlyInertsTheExecutableScript(): void
     {
         $ld = '<script type="application/ld+json">{"@type":"Thing"}</script>';
@@ -432,7 +494,7 @@ final class TrackingCodeTest extends TestCase
         $this->assertAllScriptsInert($output);
     }
 
-    public function testOutputIsAFixedPoint(): void
+    public function testOutputIsStableAndRepastedOutputLosesItsCategory(): void
     {
         foreach ([
             '<script>a()</script><meta name="x" content="y"><script type="module" src="/m.js"></script>',
@@ -440,7 +502,10 @@ final class TrackingCodeTest extends TestCase
         ] as $code) {
             $once = TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH');
             $this->assertNotSame('', $once);
-            $this->assertSame($once, TrackingCode::makeInert($once, 'analytics', 'abcd1234EFGH'));
+            $this->assertSame($once, TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH'));
+            // Pasted text/plain scripts are never trusted, ours included: the internal fixed-point check
+            // (verify) is the only place our own category is recognised.
+            $this->assertStringNotContainsString('data-cmk-category', TrackingCode::makeInert($once, 'analytics', 'abcd1234EFGH'));
         }
     }
 }
