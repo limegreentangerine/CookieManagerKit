@@ -41,6 +41,7 @@ afterEach(() => {
 	document.cookie = 'cmk_consent=; Path=/; Max-Age=0';
 	delete window.cmk;
 	delete window.cmkBoot;
+	if (Object.getOwnPropertyDescriptor(document, 'currentScript')) delete document.currentScript;
 	SNIPPET_GLOBALS.forEach((name) => {
 		delete jsdom.window[name];
 	});
@@ -364,6 +365,14 @@ describe('hardening', () => {
 describe('nonce mode', () => {
 	const NONCE_BOOT = { ...BOOT, nonce: true };
 
+	// jsdom gives eval'd code no document.currentScript, so stand in for the inline loader tag.
+	function ownScript(nonce, viaAttribute = false) {
+		Object.defineProperty(document, 'currentScript', {
+			configurable: true,
+			get: () => (viaAttribute ? { nonce: '', getAttribute: () => nonce } : { nonce, getAttribute: () => '' }),
+		});
+	}
+
 	function inertWithNonce(category, code, nonce) {
 		const el = document.createElement('script');
 		el.type = 'text/plain';
@@ -381,19 +390,9 @@ describe('nonce mode', () => {
 		return el;
 	}
 
-	it('does not activate un-nonced inert scripts, even for consented or necessary categories', () => {
-		inertWithNonce('necessary', 'm()');
-		inertWithNonce('analytics', 'a()');
-		setConsent(valid(['necessary', 'analytics']));
-		start(NONCE_BOOT);
-
-		expect(live()).toHaveLength(0);
-		expect(document.querySelector('script[data-cmk-done]')).toBeNull();
-	});
-
-	it('activates nonced inert scripts and keeps the nonce on the live copy', () => {
+	it('activates only inert scripts whose nonce equals the loader own nonce, and keeps it', () => {
+		ownScript('abc123');
 		inertWithNonce('analytics', 'a()', 'abc123');
-		inertWithNonce('analytics', 'two()');
 		setConsent(valid(['necessary', 'analytics']));
 		start(NONCE_BOOT);
 
@@ -402,7 +401,68 @@ describe('nonce mode', () => {
 		expect(scripts[0].nonce || scripts[0].getAttribute('nonce')).toBe('abc123');
 	});
 
+	it('does not activate an inert script with a different nonce', () => {
+		ownScript('abc123');
+		inertWithNonce('analytics', 'a()', 'attacker');
+		setConsent(valid(['necessary', 'analytics']));
+		start(NONCE_BOOT);
+
+		expect(live()).toHaveLength(0);
+		expect(document.querySelector('script[data-cmk-done]')).toBeNull();
+	});
+
+	it('does not activate an inert script without a nonce', () => {
+		ownScript('abc123');
+		inertWithNonce('analytics', 'a()');
+		setConsent(valid(['necessary', 'analytics']));
+		start(NONCE_BOOT);
+
+		expect(live()).toHaveLength(0);
+	});
+
+	it('does not activate a necessary script with a wrong nonce', () => {
+		ownScript('abc123');
+		inertWithNonce('necessary', 'm()', 'wrong');
+		start(NONCE_BOOT);
+
+		expect(live()).toHaveLength(0);
+	});
+
+	it('fails closed but keeps the API when the loader has no current script', () => {
+		inertWithNonce('necessary', 'm()', 'abc123');
+		inertWithNonce('analytics', 'a()', 'abc123');
+		setConsent(valid(['necessary', 'analytics']));
+		start(NONCE_BOOT);
+
+		expect(live()).toHaveLength(0);
+		expect(window.cmk.get().c).toEqual(['necessary', 'analytics']);
+		expect(window.cmk.has('necessary')).toBe(true);
+	});
+
+	it('fails closed when the loader tag carries no nonce, and the API still works', () => {
+		ownScript('');
+		inertWithNonce('analytics', 'a()', 'abc123');
+		inertWithNonce('analytics', 'two()');
+		start(NONCE_BOOT);
+
+		expect(live()).toHaveLength(0);
+		expect(window.cmk.get()).toBeNull();
+		expect(window.cmk.has('necessary')).toBe(true);
+		expect(window.cmk.save(['analytics'])).toEqual(['necessary', 'analytics']);
+		expect(live()).toHaveLength(0);
+	});
+
+	it('reads the loader nonce from the attribute when the property is empty', () => {
+		ownScript('abc123', true);
+		inertWithNonce('analytics', 'a()', 'abc123');
+		setConsent(valid(['necessary', 'analytics']));
+		start(NONCE_BOOT);
+
+		expect(live().map((s) => s.text)).toEqual(['a()']);
+	});
+
 	it('leaves behaviour unchanged when nonce mode is off', () => {
+		ownScript('abc123');
 		inertWithNonce('analytics', 'a()');
 		setConsent(valid(['necessary', 'analytics']));
 		start({ ...BOOT, nonce: false });

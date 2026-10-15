@@ -12,6 +12,19 @@
 		return;
 	}
 
+	/* Must be read now: currentScript is only set while this tag runs. */
+	var ownNonce = '';
+
+	try {
+		var self = d.currentScript;
+
+		if (self) {
+			ownNonce = self.nonce || self.getAttribute('nonce') || '';
+		}
+	} catch (e) {
+		ownNonce = '';
+	}
+
 	var boot = w.cmkBoot || {};
 	var COOKIE = 'cmk_consent';
 	var NECESSARY = 'necessary';
@@ -114,12 +127,12 @@
 			}
 
 			/*
-			 * With a CSP nonce on the page, only activate inert scripts the server nonced. Otherwise injected markup
-			 * that looks inert (text/plain) would become trusted live script via this loader.
+			 * With a CSP nonce on the page, only activate inert scripts carrying this loader's own nonce, which an
+			 * attacker cannot know. Otherwise injected markup that looks inert (text/plain) would become live script.
 			 */
 			var nonce = inert.nonce || inert.getAttribute('nonce');
 
-			if (nonceMode && !nonce) {
+			if (nonceMode && (!ownNonce || nonce !== ownNonce)) {
 				continue;
 			}
 
