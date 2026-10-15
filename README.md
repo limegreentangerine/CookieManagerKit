@@ -113,6 +113,7 @@ cookie's name, purpose and duration under the always-allowed category:
 - Upgrades re-create default categories that were deleted.
 - Scripts that already ran cannot be un-run; the page reloads on withdrawal.
 - The Appearance font option is "theme font" or "system font".
+- A tracking snippet that contains `<svg>` or `<math>` is removed entirely (it cannot be verified safely), and `data-cmk-*` attributes pasted into a tracking snippet's scripts are stripped.
 
 ## Developing
 

@@ -2,6 +2,15 @@
 
 Notable changes to this project are documented here.
 
+## Unreleased
+
+### Fixed
+
+- Tracking snippets containing `<svg>` or `<math>` are removed, and the inert output is verified with full-document (body and head) parses, closing a foreign-content bypass of the round-trip check.
+- Pasted `data-cmk-*` attributes (and a pasted `nonce` on `text/plain`) are stripped from scripts the rewrite leaves untouched, so a pasted script can no longer be activated as `necessary`.
+- Overlapping header and footer tracking snippets are rewritten in a single pass, so no part of either stays live.
+- The `{session}_LOGIN` cookie is described with the remember-me lifetime; the page-output gate is reset at the start of every render; `composer typecheck` fails on errors and is clean.
+
 ## 0.1.0
 
 Phase 1: consent banner and script blocking.
