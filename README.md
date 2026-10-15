@@ -41,7 +41,9 @@ Mark a script as inert and give it a category handle:
 - The site's SEO tracking codes (header and footer) are made inert under category
   `analytics` automatically, and their `<noscript>` parts are removed. If the `analytics`
   category is deleted, the snippets stay in the page but remain inert and never run (the
-  loader only activates known categories).
+  loader only activates known categories). Data blocks that browsers never execute
+  (`application/ld+json`, `importmap`, `speculationrules`, other non-JavaScript types) are left as pasted.
+  If rendering the banner fails, scripts stay blocked; tracking snippets that cannot be made inert are removed from the page.
 
 **Limitation: only `<script>` elements are held back.** Other markup in a pasted tracking
 snippet still loads or runs before consent: `<img>`, `<iframe>`, `<link>`, `<object>`,

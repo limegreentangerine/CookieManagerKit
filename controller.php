@@ -175,6 +175,11 @@ class Controller extends PackageController
         Events::addListener('on_before_render', function () {
             ConsentManager::onBeforeRender();
         });
+
+        // Registered unconditionally: the SEO tracking snippets are made inert (or removed) even if the banner fails.
+        Events::addListener('on_page_output', function ($event) {
+            ConsentManager::onPageOutput($event);
+        });
     }
 
 }

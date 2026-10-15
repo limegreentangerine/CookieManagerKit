@@ -92,4 +92,53 @@ final class ConsentManagerNonceTest extends TestCase
 
         $this->addToAssertionCount(1);
     }
+
+    public function testPageOutputGateIsClosedUntilARenderActivatedIt(): void
+    {
+        ConsentManager::reset();
+        $this->assertFalse(ConsentManager::isActive());
+    }
+
+    public function testRewriteSnippetsMakesBothSnippetsInert(): void
+    {
+        $contents = '<head><script>a()</script></head><body><script>b()</script></body>';
+        $out = ConsentManager::rewriteSnippets($contents, ['<script>a()</script>', '<script>b()</script>'], null, static function (): void {
+            throw new \LogicException('no error expected');
+        });
+
+        $this->assertSame(2, substr_count($out, 'type="text/plain" data-cmk-category="analytics"'));
+    }
+
+    public function testRewriteSnippetsRemovesASnippetTheRewriterRefuses(): void
+    {
+        $out = ConsentManager::rewriteSnippets('<p>x</p><script>a()</script>', ['<script>a()</script>'], null, static function (): void {}, static fn() => '');
+
+        $this->assertSame('<p>x</p>', $out);
+    }
+
+    public function testRewriteSnippetsRemovesASnippetWhoseRewriteThrowsAndReportsIt(): void
+    {
+        $seen = null;
+        $out = ConsentManager::rewriteSnippets(
+            '<p>x</p><script>a()</script><script>a()</script>',
+            ['<script>a()</script>'],
+            null,
+            static function (\Throwable $e) use (&$seen): void {
+                $seen = $e;
+            },
+            static function (): string {
+                throw new \RuntimeException('parser blew up');
+            },
+        );
+
+        $this->assertSame('<p>x</p>', $out);
+        $this->assertInstanceOf(\RuntimeException::class, $seen);
+    }
+
+    public function testRewriteSnippetsIgnoresMissingAndEmptySnippets(): void
+    {
+        $contents = '<p>nothing here</p>';
+
+        $this->assertSame($contents, ConsentManager::rewriteSnippets($contents, ['', '<script>zzz()</script>'], null, static function (): void {}));
+    }
 }

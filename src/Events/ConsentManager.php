@@ -19,7 +19,8 @@ class ConsentManager
     private const EXCLUDED_PATHS = ['/login'];
     private const TRACKING_CATEGORY = 'analytics';
 
-    private static bool $outputHooked = false;
+    /** Set once a public page has passed the exclusion checks; onPageOutput only acts on such a request. */
+    private static bool $active = false;
 
     /**
      * A same-origin path, so the page works whichever host serves it (www or not) and whether or not pretty URLs
@@ -95,6 +96,16 @@ class ConsentManager
         }
     }
 
+    public static function isActive(): bool
+    {
+        return self::$active;
+    }
+
+    public static function reset(): void
+    {
+        self::$active = false;
+    }
+
     public static function onBeforeRender(): void
     {
         self::guarded(self::beforeRender(...));
@@ -111,6 +122,9 @@ class ConsentManager
         if (in_array((string) $page->getCollectionPath(), self::EXCLUDED_PATHS, true)) {
             return;
         }
+
+        // From here on the tracking snippets of this page must be made inert, whatever else goes wrong.
+        self::$active = true;
 
         $locale = Catalog::resolveLocale((string) Localization::activeLocale());
         $controller = $page->getPageController();
@@ -130,41 +144,70 @@ class ConsentManager
         $controller->addHeaderItem(LoaderScript::inline($boot, $nonce));
         $controller->requireAsset('css', 'cookie-manager-kit/css');
         $controller->requireAsset('javascript', 'cookie-manager-kit/runtime');
-
-        if (!self::$outputHooked) {
-            self::$outputHooked = true;
-            app('director')->addListener('on_page_output', [self::class, 'onPageOutput']);
-        }
     }
 
     /**
      * Concrete prints the SEO tracking snippets itself, in the form the admin pasted them. Find them verbatim in the
      * finished page and make them inert. If the analytics category has been deleted the snippet is still made
-     * inert and simply never activates, which is the safe failure.
+     * inert and simply never activates, which is the safe failure. The listener is registered unconditionally; it
+     * acts only on a page onBeforeRender accepted, and a snippet that cannot be made inert is removed (fail closed).
      */
     public static function onPageOutput($event): void
     {
-        self::guarded(static fn() => self::pageOutput($event));
+        if (!self::$active) {
+            return;
+        }
+
+        self::$active = false;
+
+        self::guarded(static function () use ($event): void {
+            $repository = app('site')->getSite()->getConfigRepository();
+            $snippets = [];
+
+            foreach (['seo.tracking.code.header', 'seo.tracking.code.footer'] as $key) {
+                $snippets[] = trim((string) $repository->get($key));
+            }
+
+            $contents = (string) $event->getArgument('contents');
+            $rewritten = self::rewriteSnippets($contents, $snippets, self::nonce(), ErrorLog::record(...));
+
+            if ($rewritten !== $contents) {
+                $event->setArgument('contents', $rewritten);
+            }
+        });
     }
 
-    private static function pageOutput($event): void
+    /**
+     * Pure: makes each snippet found verbatim in $contents inert. A snippet whose rewrite throws, or comes back
+     * empty, is removed from the output rather than left live.
+     *
+     * @param list<string>                                            $snippets
+     * @param callable(\Throwable): void                              $onError
+     * @param (callable(string, string, ?string): string)|null        $rewriter defaults to TrackingCode::makeInert
+     */
+    public static function rewriteSnippets(string $contents, array $snippets, ?string $nonce, callable $onError, ?callable $rewriter = null): string
     {
-        $contents = (string) $event->getArgument('contents');
-        $repository = app('site')->getSite()->getConfigRepository();
-        $changed = false;
-        $nonce = self::nonce();
+        $rewriter ??= TrackingCode::makeInert(...);
 
-        foreach (['seo.tracking.code.header', 'seo.tracking.code.footer'] as $key) {
-            $code = trim((string) $repository->get($key));
-
-            if ($code !== '' && str_contains($contents, $code)) {
-                $contents = str_replace($code, TrackingCode::makeInert($code, self::TRACKING_CATEGORY, $nonce), $contents);
-                $changed = true;
+        foreach ($snippets as $code) {
+            if ($code === '' || !str_contains($contents, $code)) {
+                continue;
             }
+
+            try {
+                $replacement = $rewriter($code, self::TRACKING_CATEGORY, $nonce);
+            } catch (\Throwable $e) {
+                $replacement = '';
+
+                try {
+                    $onError($e);
+                } catch (\Throwable) {
+                }
+            }
+
+            $contents = str_replace($code, $replacement, $contents);
         }
 
-        if ($changed) {
-            $event->setArgument('contents', $contents);
-        }
+        return $contents;
     }
 }
