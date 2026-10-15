@@ -3,3 +3,5 @@ vendor/
 build/
 var/
 tests/
+docs/
+.superpowers/
