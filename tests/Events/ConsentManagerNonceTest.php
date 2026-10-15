@@ -4,18 +4,12 @@ declare(strict_types=1);
 
 namespace CookieManagerKit\Tests\Events;
 
-use PHPUnit\Framework\TestCase;
 use Concrete\Core\Page\Page;
+use PHPUnit\Framework\TestCase;
 use CookieManagerKit\Events\ConsentManager;
 
 final class ConsentManagerNonceTest extends TestCase
 {
-    public static function setUpBeforeClass(): void
-    {
-        // Concrete's class files refuse to load without it.
-        defined('C5_EXECUTE') || define('C5_EXECUTE', true);
-    }
-
     public function testStringIsItsOwnNonce(): void
     {
         $this->assertSame('abcd1234efgh', ConsentManager::nonceFrom('abcd1234efgh'));
@@ -244,5 +238,10 @@ final class ConsentManagerNonceTest extends TestCase
 
         ConsentManager::beforeRender(null);
         $this->assertFalse(ConsentManager::isActive());
+    }
+    public static function setUpBeforeClass(): void
+    {
+        // Concrete's class files refuse to load without it.
+        defined('C5_EXECUTE') || define('C5_EXECUTE', true);
     }
 }

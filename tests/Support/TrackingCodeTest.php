@@ -21,8 +21,8 @@ final class TrackingCodeTest extends TestCase
 
     /**
      * @return list<\Dom\ParentNode> the output parsed three ways: as a fragment, and as the body and as the head
-     *                                 of a full document (a browser parses the page as a document, and the two
-     *                                 differ for foreign content)
+     *                               of a full document (a browser parses the page as a document, and the two
+     *                               differ for foreign content)
      */
     private function parses(string $output): array
     {
@@ -97,6 +97,22 @@ final class TrackingCodeTest extends TestCase
         }
 
         return $found;
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    private static function foreignRawTextProbes(): array
+    {
+        $probes = [];
+
+        foreach (['svg', 'math'] as $foreign) {
+            foreach (['title', 'xmp', 'iframe', 'noembed', 'textarea'] as $raw) {
+                $probes[$foreign . ' ' . $raw . ' attribute'] = ['<' . $foreign . '></p><' . $raw . '><a id="</' . $raw . '><script src=//evil.example/y.js></script>">'];
+            }
+        }
+
+        return $probes;
     }
     /**
      * @return array<string, array{string}>
@@ -449,22 +465,6 @@ final class TrackingCodeTest extends TestCase
             'math style attribute' => ['<math></p><style><a id="</style><script src=//evil.example/y.js></script>">'],
             ...self::foreignRawTextProbes(),
         ];
-    }
-
-    /**
-     * @return array<string, array{string}>
-     */
-    private static function foreignRawTextProbes(): array
-    {
-        $probes = [];
-
-        foreach (['svg', 'math'] as $foreign) {
-            foreach (['title', 'xmp', 'iframe', 'noembed', 'textarea'] as $raw) {
-                $probes[$foreign . ' ' . $raw . ' attribute'] = ['<' . $foreign . '></p><' . $raw . '><a id="</' . $raw . '><script src=//evil.example/y.js></script>">'];
-            }
-        }
-
-        return $probes;
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('roundTripProbes')]

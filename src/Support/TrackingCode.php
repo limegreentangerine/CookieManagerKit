@@ -3,8 +3,8 @@
 namespace CookieManagerKit\Support;
 
 use Dom\Element;
-use Dom\HTMLDocument;
 use Dom\ParentNode;
+use Dom\HTMLDocument;
 
 /**
  * Makes a pasted tracking snippet (Concrete's SEO tracking code) inert until its category is consented.
