@@ -1,4 +1,6 @@
 parameters:
+  # Concrete's PHPDoc says Page::getByID() and PageCache::getLibrary() never return null, but they can; the null checks stay.
+  treatPhpDocTypesAsCertain: false
   bootstrapFiles:
     - phpstan-bootstrap.php
   level: 4
