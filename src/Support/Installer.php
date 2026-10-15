@@ -42,25 +42,48 @@ final class Installer
         ],
     ];
 
+    /**
+     * The definitions to create. `necessary` is always required; the optional defaults are offered only on a first
+     * install (no categories at all), so an admin who deleted one never gets it back on upgrade.
+     *
+     * @param list<string> $existingHandles
+     *
+     * @return list<array{handle: string, sort: int, necessary: bool, title: string, description: string}>
+     */
+    public static function missingCategories(array $existingHandles): array
+    {
+        $firstInstall = $existingHandles === [];
+
+        return array_values(array_filter(
+            self::CATEGORIES,
+            static fn(array $definition): bool => !in_array($definition['handle'], $existingHandles, true)
+                && ($definition['necessary'] || $firstInstall),
+        ));
+    }
+
     public static function seed(EntityManagerInterface $em, string $locale): void
     {
         if ($em->getRepository(Settings::class)->findOneBy([]) === null) {
             $em->persist(new Settings());
         }
 
-        foreach (self::CATEGORIES as $definition) {
-            $category = $em->getRepository(Category::class)->findOneBy(['handle' => $definition['handle']]);
+        $existing = [];
 
-            if ($category === null) {
-                $category = (new Category())
-                    ->setHandle($definition['handle'])
-                    ->setSortOrder($definition['sort'])
-                    ->setNecessary($definition['necessary']);
-                $category->setContent($locale, $definition['title'], $definition['description']);
-                $em->persist($category);
-            } elseif ($definition['necessary'] && !$category->isNecessary()) {
+        foreach ($em->getRepository(Category::class)->findAll() as $category) {
+            $existing[] = $category->getHandle();
+
+            if ($category->getHandle() === 'necessary' && !$category->isNecessary()) {
                 $category->setNecessary(true);
             }
+        }
+
+        foreach (self::missingCategories($existing) as $definition) {
+            $category = (new Category())
+                ->setHandle($definition['handle'])
+                ->setSortOrder($definition['sort'])
+                ->setNecessary($definition['necessary']);
+            $category->setContent($locale, $definition['title'], $definition['description']);
+            $em->persist($category);
         }
 
         if ($em->getRepository(BannerContent::class)->findOneBy(['locale' => $locale]) === null) {

@@ -13,6 +13,7 @@ use ClassKit\Entity\Core\UpdatedEntity;
  * @ORM\Table(
  *      name="cmkServiceContents",
  *      indexes={@ORM\Index(name="idx_cmk_sc_locale", columns={"locale"})},
+ *      uniqueConstraints={@ORM\UniqueConstraint(name="uniq_cmk_sc_service_locale", columns={"serviceID","locale"})},
  *      options={"comment": "Per-locale content for services"}
  * )
  */

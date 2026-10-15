@@ -38,4 +38,37 @@ final class InstallerTest extends TestCase
         sort($sorted);
         $this->assertSame($sorted, $sorts);
     }
+
+    /**
+     * @param list<string> $existing
+     *
+     * @return list<string>
+     */
+    private function missing(array $existing): array
+    {
+        return array_column(Installer::missingCategories($existing), 'handle');
+    }
+
+    public function testAFirstInstallCreatesEveryDefault(): void
+    {
+        $this->assertSame(['necessary', 'preferences', 'analytics', 'marketing'], $this->missing([]));
+    }
+
+    public function testAnUpgradeNeverRecreatesDeletedDefaults(): void
+    {
+        $this->assertSame([], $this->missing(['necessary', 'custom']));
+        $this->assertSame([], $this->missing(['necessary', 'analytics']));
+        $this->assertSame([], $this->missing(['necessary']));
+    }
+
+    public function testNecessaryIsRecreatedWhenMissingFromANonEmptyTable(): void
+    {
+        $this->assertSame(['necessary'], $this->missing(['custom']));
+        $this->assertSame(['necessary'], $this->missing(['preferences', 'analytics', 'marketing']));
+    }
+
+    public function testNothingIsReportedForAFullSet(): void
+    {
+        $this->assertSame([], $this->missing(['necessary', 'preferences', 'analytics', 'marketing']));
+    }
 }

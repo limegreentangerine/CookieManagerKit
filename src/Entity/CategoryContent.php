@@ -13,6 +13,7 @@ use ClassKit\Entity\Core\UpdatedEntity;
  * @ORM\Table(
  *      name="cmkCategoryContents",
  *      indexes={@ORM\Index(name="idx_cmk_cc_locale", columns={"locale"})},
+ *      uniqueConstraints={@ORM\UniqueConstraint(name="uniq_cmk_cc_category_locale", columns={"categoryID","locale"})},
  *      options={"comment": "Per-locale content for consent categories"}
  * )
  */
