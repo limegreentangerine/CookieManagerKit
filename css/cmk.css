@@ -205,6 +205,7 @@
 }
 
 .cmk-preview-stage .cmk {
+	z-index: auto;
 	position: relative;
 	inset: auto;
 	width: auto;

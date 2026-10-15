@@ -37,10 +37,11 @@ Mark a script as inert and give it a category handle:
 ```
 
 - Use `data-cmk-type="module"` on the element for module scripts.
-- From PHP: `CookieManagerKit\Support\Inert::script($category, $src, $inline, $type)`.
+- From PHP: `CookieManagerKit\Support\Inert::script($category, $src, $inline, $type, $nonce)`.
 - The site's SEO tracking codes (header and footer) are made inert under category
   `analytics` automatically, and their `<noscript>` parts are removed. If the `analytics`
-  category is deleted, those snippets are removed from the page output.
+  category is deleted, the snippets stay in the page but remain inert and never run (the
+  loader only activates known categories).
 
 **Limitation: only `<script>` elements are held back.** Other markup in a pasted tracking
 snippet still loads or runs before consent: `<img>`, `<iframe>`, `<link>`, `<object>`,
@@ -73,10 +74,13 @@ Bind `cookie_manager_kit.csp_nonce` in the container, as a string or a Closure r
 the request nonce, so the inline loader carries it.
 
 When a nonce is bound, the loader also requires every inert script to carry the same
-nonce as the loader itself; otherwise nothing activates. The nonce must be stable for the
-cached page, because the full-page cache serves one nonce to everyone. Use a
-cache-safe approach or exclude those pages from the cache. Without a CSP header this mode
-adds no protection.
+nonce as the loader itself; otherwise nothing activates. The SEO tracking snippets and
+`Inert::script()` output (pass the nonce as the 5th argument) then carry the page nonce.
+Scripts you write by hand must carry the same `nonce` attribute or they will not activate.
+
+With full-page caching on, every visitor of a cached page is served the same nonce, which
+weakens nonce protection. Either use one nonce value per cached page or exclude the page
+from the cache. Without a CSP header this mode adds no protection.
 
 ## Essential ConcreteCMS cookies
 
@@ -95,7 +99,8 @@ These are never blocked and are listed read-only on the Categories page:
   The consent endpoint is same-origin, JSON only, strictly schema-checked and
   rate-limited. The rate limit uses the client IP, so configure Concrete's trusted proxies
   when running behind a proxy or CDN.
-- Failures are logged server-side with sanitised messages.
+- Failures are logged server-side with sanitised messages, to the `cookie_manager` channel
+  through ClassKit's Logger (Dashboard > Reports > Logs).
 - The loader activates any inert `type="text/plain"` script of a consented (or
   `necessary`) category. A site must not allow untrusted HTML containing such scripts.
 

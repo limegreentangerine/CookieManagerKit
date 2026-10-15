@@ -16,7 +16,9 @@ Phase 1: consent banner and script blocking.
 - Floating settings button, `data-cmk-open` hook and `window.cmk` API with `consent:changed`.
 - Appearance page with banner styling and live preview.
 - Config and consent endpoints (`/cookie-manager/config/{locale}.json`, `/cookie-manager/consent`).
-- Optional CSP nonce support through `cookie_manager_kit.csp_nonce`.
+- Optional CSP nonce support through `cookie_manager_kit.csp_nonce`; the loader, the SEO tracking snippets and `Inert::script()` carry the page nonce.
+- Server-side failures are logged to the `cookie_manager` channel through ClassKit's Logger.
+- If the `analytics` category is deleted, SEO tracking snippets stay in the page but remain inert and never run.
 - Essential ConcreteCMS cookies are never blocked.
 
 ## 0.0.0
