@@ -170,6 +170,21 @@ final class ViewEscapingTest extends TestCase
         return false;
     }
 
+    public function testEveryViewParses(): void
+    {
+        $offenders = [];
+
+        foreach (self::views() as $file) {
+            try {
+                token_get_all((string) file_get_contents($file), TOKEN_PARSE);
+            } catch (\ParseError $error) {
+                $offenders[] = substr($file, strlen(dirname(__DIR__)) + 1) . ': ' . $error->getMessage() . ' on line ' . $error->getLine();
+            }
+        }
+
+        $this->assertSame([], $offenders, 'a view that does not parse cannot be checked');
+    }
+
     public function testEveryEchoedValueInAViewIsEncodedForItsContext(): void
     {
         $offenders = [];

@@ -35,21 +35,49 @@ final class ControllerSecurityTest extends TestCase
     }
 
     /**
+     * @return string|null the parse error, or null when the source parses
+     */
+    public static function parseError(string $source): ?string
+    {
+        try {
+            token_get_all($source, TOKEN_PARSE);
+        } catch (\ParseError $error) {
+            return $error->getMessage() . ' on line ' . $error->getLine();
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string> every problem in one controller source; a source that does not parse is itself the problem
+     */
+    public static function sourceProblems(string $source): array
+    {
+        $error = self::parseError($source);
+
+        if ($error !== null) {
+            return ['parse error: ' . $error];
+        }
+
+        $problems = [];
+
+        foreach (self::actions($source) as $action) {
+            $problems = [...$problems, ...self::actionProblems($source, $action)];
+        }
+
+        return [...$problems, ...self::redirectProblems($source), ...self::outputProblems($source)];
+    }
+
+    /**
      * @return list<string|array{int, string, int}> tokens without whitespace and comments
      */
     private static function significant(string $source): array
     {
         $tokens = [];
 
-        // Controller sources are valid PHP, so TOKEN_PARSE makes method names such as clone()/list()/new() T_STRING.
-        // A fixture that is deliberately not valid PHP falls back to plain tokenising.
-        try {
-            $raw = token_get_all($source, TOKEN_PARSE);
-        } catch (\ParseError) {
-            $raw = token_get_all($source);
-        }
-
-        foreach ($raw as $token) {
+        // TOKEN_PARSE makes method names such as clone()/list()/new() T_STRING. A source that does not parse throws
+        // ParseError: there is deliberately no fallback to plain tokenising, which would silently drop those methods.
+        foreach (token_get_all($source, TOKEN_PARSE) as $token) {
             if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
                 continue;
             }
@@ -486,6 +514,37 @@ final class ControllerSecurityTest extends TestCase
         return $problems;
     }
 
+    public function testEveryControllerParses(): void
+    {
+        $files = [
+            ...(glob(dirname(__DIR__) . '/controllers/single_page/dashboard/*.php') ?: []),
+            ...self::controllers(),
+        ];
+        $offenders = [];
+
+        foreach ($files as $file) {
+            $error = self::parseError((string) file_get_contents($file));
+
+            if ($error !== null) {
+                $offenders[] = basename($file) . ': ' . $error;
+            }
+        }
+
+        $this->assertNotSame([], $files);
+        $this->assertSame([], $offenders, 'a controller that does not parse cannot be checked');
+    }
+
+    public function testASyntaxErrorIsReportedNotSkipped(): void
+    {
+        $source = '<?php class C { public function clone($id) { $this->entityManager->flush(); } public function broken() { $x = ; } }';
+        $problems = self::sourceProblems($source);
+
+        $this->assertNotSame([], $problems);
+        $this->assertStringContainsString('parse error', $problems[0]);
+        $this->assertNull(self::parseError('<?php class C { public function clone($id) {} }'));
+        $this->assertStringContainsString('clone', implode("\n", self::sourceProblems('<?php class C { public function clone($id) { $this->entityManager->flush(); } }')));
+    }
+
     public function testThereAreDashboardControllersToCheck(): void
     {
         $this->assertNotSame([], self::controllers());
@@ -497,6 +556,10 @@ final class ControllerSecurityTest extends TestCase
 
         foreach (self::controllers() as $file) {
             $source = (string) file_get_contents($file);
+
+            if (self::parseError($source) !== null) {
+                continue; // reported by testEveryControllerParses
+            }
 
             foreach (self::actions($source) as $action) {
                 foreach (self::actionProblems($source, $action) as $problem) {
@@ -513,6 +576,10 @@ final class ControllerSecurityTest extends TestCase
         $offenders = [];
 
         foreach (self::controllers() as $file) {
+            if (self::parseError((string) file_get_contents($file)) !== null) {
+                continue; // reported by testEveryControllerParses
+            }
+
             foreach (self::redirectProblems((string) file_get_contents($file)) as $problem) {
                 $offenders[] = basename($file) . '::' . $problem;
             }
@@ -526,6 +593,10 @@ final class ControllerSecurityTest extends TestCase
         $offenders = [];
 
         foreach (self::controllers() as $file) {
+            if (self::parseError((string) file_get_contents($file)) !== null) {
+                continue; // reported by testEveryControllerParses
+            }
+
             foreach (self::outputProblems((string) file_get_contents($file)) as $problem) {
                 $offenders[] = basename($file) . ': ' . $problem;
             }
