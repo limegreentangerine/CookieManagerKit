@@ -21,12 +21,24 @@
 	};
 
 	var cmk = null;
-	var state = { config: null, root: null, widget: null, started: false };
+	var state = { config: null, root: null, widget: null, opener: null, started: false };
+	var FALLBACK = {
+		title: 'We value your privacy',
+		acceptAll: 'Accept all',
+		rejectAll: 'Reject all',
+		customise: 'Customise',
+		save: 'Save my choices',
+		widget: 'Cookie settings'
+	};
 	var runtime = {
 		reload: function () {
 			w.location.reload();
 		}
 	};
+
+	function text(value, fallback) {
+		return typeof value === 'string' && value.trim() !== '' ? value : fallback;
+	}
 
 	function pick(value, allowed, fallback) {
 		return typeof value === 'string' && allowed.indexOf(value) !== -1 ? value : fallback;
@@ -79,7 +91,7 @@
 		var out = [];
 
 		String(text || '')
-			.split('\n')
+			.split(/\r\n|\r|\n/)
 			.forEach(function (line, index) {
 				if (index > 0) {
 					out.push(d.createElement('br'));
@@ -115,11 +127,22 @@
 	}
 
 	function validCategories(config) {
+		var seen = {};
+
 		return (Array.isArray(config.categories) ? config.categories : []).filter(
 			function (category) {
-				return (
-					category && typeof category.handle === 'string' && HANDLE.test(category.handle)
-				);
+				if (
+					!category ||
+					typeof category.handle !== 'string' ||
+					!HANDLE.test(category.handle) ||
+					Object.prototype.hasOwnProperty.call(seen, category.handle)
+				) {
+					return false;
+				}
+
+				seen[category.handle] = true;
+
+				return true;
 			}
 		);
 	}
@@ -201,8 +224,21 @@
 
 		state.root = null;
 
-		if (restoreFocus && state.widget) {
-			state.widget.focus();
+		if (restoreFocus) {
+			var opener = state.opener;
+			state.opener = null;
+
+			if (
+				opener &&
+				opener !== d.body &&
+				d.documentElement.contains(opener) &&
+				typeof opener.focus === 'function' &&
+				!opener.disabled
+			) {
+				opener.focus();
+			} else if (state.widget) {
+				state.widget.focus();
+			}
 		}
 	}
 
@@ -261,7 +297,10 @@
 				el('div', { class: 'cmk__cat' }, [
 					el('label', { class: 'cmk__cat-head', for: 'cmk-cat-' + category.handle }, [
 						box,
-						el('span', { class: 'cmk__cat-title', text: category.title })
+						el('span', {
+							class: 'cmk__cat-title',
+							text: text(category.title, category.handle)
+						})
 					]),
 					category.description
 						? el('p', { class: 'cmk__cat-desc' }, lines(category.description))
@@ -273,15 +312,19 @@
 		});
 
 		prefs.appendChild(
-			button('cmk__btn cmk__btn--primary', labels.save, function () {
+			button('cmk__btn cmk__btn--primary', text(labels.save, FALLBACK.save), function () {
 				commit(ticked(prefs));
 			})
 		);
 
-		var customise = button('cmk__btn cmk__btn--link', labels.customise, function () {
-			prefs.hidden = !prefs.hidden;
-			customise.setAttribute('aria-expanded', prefs.hidden ? 'false' : 'true');
-		});
+		var customise = button(
+			'cmk__btn cmk__btn--link',
+			text(labels.customise, FALLBACK.customise),
+			function () {
+				prefs.hidden = !prefs.hidden;
+				customise.setAttribute('aria-expanded', prefs.hidden ? 'false' : 'true');
+			}
+		);
 		customise.setAttribute('aria-controls', 'cmk-prefs');
 		customise.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 
@@ -293,7 +336,7 @@
 					id: 'cmk-title',
 					class: 'cmk__title',
 					tabindex: '-1',
-					text: banner.title
+					text: text(banner.title, FALLBACK.title)
 				}),
 				el('p', { id: 'cmk-body', class: 'cmk__body' }, lines(banner.body)),
 				href && banner.policyLinkText
@@ -305,14 +348,18 @@
 						})
 					: null,
 				el('div', { class: 'cmk__actions' }, [
-					button('cmk__btn cmk__btn--primary', labels.acceptAll, function () {
-						commit(
-							categories.map(function (category) {
-								return category.handle;
-							})
-						);
-					}),
-					button('cmk__btn', labels.rejectAll, function () {
+					button(
+						'cmk__btn cmk__btn--primary',
+						text(labels.acceptAll, FALLBACK.acceptAll),
+						function () {
+							commit(
+								categories.map(function (category) {
+									return category.handle;
+								})
+							);
+						}
+					),
+					button('cmk__btn', text(labels.rejectAll, FALLBACK.rejectAll), function () {
 						commit([]);
 					}),
 					customise
@@ -341,7 +388,7 @@
 	function mountWidget(config) {
 		var labels = (config.banner && config.banner.labels) || {};
 
-		if (config.widget === false || state.widget || !labels.widget) {
+		if (config.widget === false || state.widget) {
 			return;
 		}
 
@@ -349,7 +396,7 @@
 			type: 'button',
 			class: 'cmk-widget',
 			'data-cmk-open': true,
-			text: labels.widget
+			text: text(labels.widget, FALLBACK.widget)
 		});
 		applyStyle(state.widget, config.style || {});
 		d.body.appendChild(state.widget);
@@ -365,7 +412,49 @@
 		}
 	}
 
+	function trap(event) {
+		var root = state.root;
+
+		if (!root || root.getAttribute('data-position') !== 'center-modal') {
+			return;
+		}
+
+		var items = Array.prototype.filter.call(
+			root.querySelectorAll('button, a[href], input, [tabindex]:not([tabindex="-1"])'),
+			function (node) {
+				return !node.disabled && !node.closest('[hidden]');
+			}
+		);
+
+		if (!items.length) {
+			event.preventDefault();
+
+			return;
+		}
+
+		var first = items[0];
+		var last = items[items.length - 1];
+		var active = d.activeElement;
+
+		if (!active || !root.contains(active)) {
+			event.preventDefault();
+			first.focus();
+		} else if (event.shiftKey && active === first) {
+			event.preventDefault();
+			last.focus();
+		} else if (!event.shiftKey && active === last) {
+			event.preventDefault();
+			first.focus();
+		}
+	}
+
 	function onKey(event) {
+		if (event.key === 'Tab') {
+			trap(event);
+
+			return;
+		}
+
 		if (event.key === 'Escape' && state.root && cmk && cmk.get()) {
 			close(true);
 		}
@@ -391,6 +480,11 @@
 
 	runtime.open = function () {
 		if (state.config && cmk) {
+			if (!state.root || !state.root.contains(d.activeElement)) {
+				state.opener =
+					d.activeElement && d.activeElement !== d.body ? d.activeElement : null;
+			}
+
 			show(state.config, true, true);
 		}
 	};
@@ -399,6 +493,7 @@
 		d.removeEventListener('click', onClick);
 		d.removeEventListener('keydown', onKey);
 		close(false);
+		state.opener = null;
 
 		if (state.widget && state.widget.parentNode) {
 			state.widget.parentNode.removeChild(state.widget);

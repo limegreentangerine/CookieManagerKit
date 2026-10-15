@@ -386,3 +386,188 @@ describe('automatic start', () => {
 		expect(root()).toBeNull();
 	});
 });
+
+describe('focus is returned to whatever opened the dialog', () => {
+	const addLink = () => {
+		document.body.insertAdjacentHTML('beforeend', '<a href="#" id="footer-link" data-cmk-open>Cookie settings</a>');
+		return document.getElementById('footer-link');
+	};
+
+	it('returns focus to a footer link after Escape', () => {
+		consent(['necessary']);
+		mount();
+		const link = addLink();
+		link.focus();
+		link.click();
+		expect(document.activeElement).not.toBe(link);
+
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+		expect(root()).toBeNull();
+		expect(document.activeElement).toBe(link);
+	});
+
+	it('returns focus to the link after Save when the widget is off', () => {
+		consent(['necessary']);
+		mount(config({ widget: false }));
+		const link = addLink();
+		link.focus();
+		link.click();
+		button('Save').click();
+
+		expect(document.activeElement).toBe(link);
+	});
+
+	it('returns focus to the widget when the widget opened it', () => {
+		consent(['necessary']);
+		mount();
+		const widget = document.querySelector('.cmk-widget');
+		widget.focus();
+		widget.click();
+		button('Reject all').click();
+
+		expect(document.activeElement).toBe(widget);
+	});
+
+	it('falls back to the widget when the opener left the page', () => {
+		consent(['necessary']);
+		mount();
+		const link = addLink();
+		link.focus();
+		link.click();
+		link.remove();
+
+		expect(() => button('Save').click()).not.toThrow();
+		expect(document.activeElement).toBe(document.querySelector('.cmk-widget'));
+	});
+});
+
+describe('focus trap for the centred modal', () => {
+	const modal = () => config({ style: { ...config().style, position: 'center-modal' } });
+	const tab = (shift = false) => {
+		const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, cancelable: true, bubbles: true });
+		document.dispatchEvent(event);
+		return event;
+	};
+
+	it('wraps Tab from the last control to the first and skips hidden preferences', () => {
+		mount(modal());
+		expect(root().getAttribute('aria-modal')).toBe('true');
+		const first = document.querySelector('a.cmk__link');
+		button('Customise').focus();
+
+		const event = tab();
+
+		expect(event.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(first);
+	});
+
+	it('wraps Shift+Tab from the first control to the last', () => {
+		mount(modal());
+		document.querySelector('a.cmk__link').focus();
+
+		const event = tab(true);
+
+		expect(event.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(button('Customise'));
+	});
+
+	it('includes the preference controls once they are shown', () => {
+		mount(modal());
+		button('Customise').click();
+		button('Save').focus();
+
+		tab();
+
+		expect(document.activeElement).toBe(document.querySelector('a.cmk__link'));
+	});
+
+	it('pulls focus into the dialog when it is outside', () => {
+		mount(modal());
+		document.body.insertAdjacentHTML('beforeend', '<button id="outside">x</button>');
+		document.getElementById('outside').focus();
+
+		tab();
+
+		expect(document.activeElement).toBe(document.querySelector('a.cmk__link'));
+	});
+
+	it('does not trap other positions', () => {
+		mount();
+		expect(root().getAttribute('aria-modal')).toBe('false');
+		button('Customise').focus();
+
+		const event = tab();
+
+		expect(event.defaultPrevented).toBe(false);
+		expect(document.activeElement).toBe(button('Customise'));
+	});
+
+	it('removes the trap on stop()', () => {
+		mount(modal());
+		window.cmkRuntime.stop();
+		const event = tab();
+
+		expect(event.defaultPrevented).toBe(false);
+	});
+});
+
+describe('missing text falls back to built-in English', () => {
+	it('gives every control and the heading an accessible name', () => {
+		const cfg = config();
+		cfg.banner = { labels: {}, policyUrl: '', policyLinkText: '' };
+		mount(cfg);
+
+		expect(document.getElementById('cmk-title').textContent).toBe('We value your privacy');
+		[...document.querySelectorAll('button')].forEach((b) => expect(b.textContent.trim()).not.toBe(''));
+		expect(['Accept all', 'Reject all', 'Customise', 'Save my choices', 'Cookie settings'].every((t) => button(t))).toBe(true);
+	});
+
+	it('falls back for non-string labels and keeps the widget off when disabled', () => {
+		const cfg = config({ widget: false });
+		cfg.banner.labels = { acceptAll: 5, rejectAll: '', customise: null, save: {}, widget: [] };
+		mount(cfg);
+
+		expect(button('Accept all')).toBeTruthy();
+		expect(button('Reject all')).toBeTruthy();
+		expect(document.querySelector('.cmk-widget')).toBeNull();
+	});
+
+	it('uses the fallback widget label', () => {
+		consent(['necessary']);
+		const cfg = config();
+		cfg.banner.labels = {};
+		mount(cfg);
+
+		expect(document.querySelector('.cmk-widget').textContent).toBe('Cookie settings');
+	});
+
+	it('shows the handle for a category without a title', () => {
+		const cfg = config();
+		cfg.categories[2].title = '';
+		mount(cfg);
+
+		expect(document.querySelector('label[for="cmk-cat-analytics"] .cmk__cat-title').textContent).toBe('analytics');
+	});
+});
+
+describe('category and text robustness', () => {
+	it('keeps only the first category for a duplicated handle', () => {
+		const cfg = config();
+		cfg.categories.push({ handle: 'analytics', necessary: false, title: 'Dupe', description: '', services: [], cookies: [] });
+		mount(cfg);
+
+		expect(document.querySelectorAll('.cmk__cat')).toHaveLength(4);
+		expect(document.querySelectorAll('#cmk-cat-analytics')).toHaveLength(1);
+		expect(document.body.textContent).not.toContain('Dupe');
+	});
+
+	it('splits CRLF and CR line breaks without leaving a carriage return', () => {
+		const cfg = config();
+		cfg.banner.body = 'one\r\ntwo\rthree';
+		mount(cfg);
+
+		expect(document.getElementById('cmk-body').textContent).toBe('onetwothree');
+		expect(document.getElementById('cmk-body').querySelectorAll('br')).toHaveLength(2);
+	});
+});
