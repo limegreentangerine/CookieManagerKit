@@ -52,6 +52,41 @@ class ConsentManager
         }
     }
 
+    private static function beforeRender(): void
+    {
+        $page = Page::getCurrentPage();
+
+        if (!$page || $page->isError() || $page->isAdminArea() || $page->isEditMode() || $page->isMasterCollection()) {
+            return;
+        }
+
+        if (in_array((string) $page->getCollectionPath(), self::EXCLUDED_PATHS, true)) {
+            return;
+        }
+
+        // From here on the tracking snippets of this page must be made inert, whatever else goes wrong.
+        self::$active = true;
+
+        $locale = Catalog::resolveLocale((string) Localization::activeLocale());
+        $controller = $page->getPageController();
+
+        self::registerAssets();
+
+        $nonce = self::nonce();
+        $boot = LoaderScript::boot(
+            Catalog::policyVersion(),
+            Catalog::handles(),
+            Catalog::lifetimeDays(),
+            self::path('/cookie-manager/config/' . $locale . '.json') . '?v=' . Catalog::hash(),
+            self::path('/cookie-manager/consent'),
+            $nonce,
+        );
+
+        $controller->addHeaderItem(LoaderScript::inline($boot, $nonce));
+        $controller->requireAsset('css', 'cookie-manager-kit/css');
+        $controller->requireAsset('javascript', 'cookie-manager-kit/runtime');
+    }
+
     /**
      * Only a string or a Closure is a nonce source: a string that happens to name a function is a plain value and
      * is never called. The result is used only if it is a string (its format is checked where it is emitted).
@@ -111,41 +146,6 @@ class ConsentManager
         self::guarded(self::beforeRender(...));
     }
 
-    private static function beforeRender(): void
-    {
-        $page = Page::getCurrentPage();
-
-        if (!$page || $page->isError() || $page->isAdminArea() || $page->isEditMode() || $page->isMasterCollection()) {
-            return;
-        }
-
-        if (in_array((string) $page->getCollectionPath(), self::EXCLUDED_PATHS, true)) {
-            return;
-        }
-
-        // From here on the tracking snippets of this page must be made inert, whatever else goes wrong.
-        self::$active = true;
-
-        $locale = Catalog::resolveLocale((string) Localization::activeLocale());
-        $controller = $page->getPageController();
-
-        self::registerAssets();
-
-        $nonce = self::nonce();
-        $boot = LoaderScript::boot(
-            Catalog::policyVersion(),
-            Catalog::handles(),
-            Catalog::lifetimeDays(),
-            self::path('/cookie-manager/config/' . $locale . '.json') . '?v=' . Catalog::hash(),
-            self::path('/cookie-manager/consent'),
-            $nonce,
-        );
-
-        $controller->addHeaderItem(LoaderScript::inline($boot, $nonce));
-        $controller->requireAsset('css', 'cookie-manager-kit/css');
-        $controller->requireAsset('javascript', 'cookie-manager-kit/runtime');
-    }
-
     /**
      * Concrete prints the SEO tracking snippets itself, in the form the admin pasted them. Find them verbatim in the
      * finished page and make them inert. If the analytics category has been deleted the snippet is still made
@@ -181,9 +181,9 @@ class ConsentManager
      * Pure: makes each snippet found verbatim in $contents inert. A snippet whose rewrite throws, or comes back
      * empty, is removed from the output rather than left live.
      *
-     * @param list<string>                                            $snippets
-     * @param callable(\Throwable): void                              $onError
-     * @param (callable(string, string, ?string): string)|null        $rewriter defaults to TrackingCode::makeInert
+     * @param list<string>                                     $snippets
+     * @param callable(\Throwable): void                       $onError
+     * @param (callable(string, string, ?string): string)|null $rewriter defaults to TrackingCode::makeInert
      */
     public static function rewriteSnippets(string $contents, array $snippets, ?string $nonce, callable $onError, ?callable $rewriter = null): string
     {
