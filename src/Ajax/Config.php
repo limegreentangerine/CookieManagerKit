@@ -4,7 +4,7 @@ namespace CookieManagerKit\Ajax;
 
 use Concrete\Core\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use CookieManagerKit\Support\{Catalog, ConfigRequest, Output};
+use CookieManagerKit\Support\{Catalog, ConfigRequest, ErrorLog, Output};
 
 /**
  * Serves the per-locale config the banner renders from. Public, read-only and identical for every visitor, so it
@@ -30,7 +30,9 @@ class Config
             }
 
             return self::response(Output::json($config), 200, $headers);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            ErrorLog::record($e);
+
             return self::response('{"error":"unavailable"}', 500, ['Cache-Control' => 'no-store']);
         }
     }

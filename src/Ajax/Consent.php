@@ -3,7 +3,7 @@
 namespace CookieManagerKit\Ajax;
 
 use Concrete\Core\Http\Request;
-use CookieManagerKit\Support\{Catalog, ConsentRequest, Output, RateLimit, RequestGuard};
+use CookieManagerKit\Support\{Catalog, ConsentRequest, ErrorLog, Output, RateLimit, RequestGuard};
 use Symfony\Component\HttpFoundation\Response;
 use CookieManagerKit\Consent\{ConsentChoice, ConsentRecorder};
 
@@ -47,11 +47,7 @@ class Consent
             $status = $this->status(app(Request::class));
         } catch (\Throwable $e) {
             $status = 500;
-
-            try {
-                \Concrete\Core\Support\Facade\Log::addError('Cookie Manager: consent endpoint failed: ' . $e->getMessage());
-            } catch (\Throwable) {
-            }
+            ErrorLog::record($e);
         }
 
         return new Response(
