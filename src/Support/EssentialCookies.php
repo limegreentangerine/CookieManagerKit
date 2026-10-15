@@ -114,7 +114,7 @@ final class EssentialCookies
             $name = (string) $name;
             [$purpose, $duration] = match (true) {
                 in_array($name, $sessions, true) => ['Keeps you signed in and your session working.', 'Session'],
-                str_ends_with($name, '_LOGIN') && in_array(substr($name, 0, -6), $sessions, true) => ['Remembers that you signed in on this browser.', 'Session'],
+                str_ends_with($name, '_LOGIN') && in_array(substr($name, 0, -6), $sessions, true) => ['Remembers that you signed in on this browser.', self::rememberMeDuration($read)],
                 $name === 'ccmAuthUserHash' => ["Keeps you signed in if you chose 'stay signed in'.", self::rememberMeDuration($read)],
                 preg_match('/^ConcreteSitemapTreeID(?:-\d+)?\z/', $name) === 1 => ['Remembers which site tree you were browsing in the dashboard.', 'Session'],
                 $name === 'ConcreteSitemap-expand' => ['Remembers which sitemap branches are open in the dashboard.', 'Session'],

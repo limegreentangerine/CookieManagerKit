@@ -3,6 +3,7 @@
 namespace CookieManagerKit\Support;
 
 use Dom\Element;
+use Dom\ParentNode;
 use Dom\HTMLDocument;
 
 /**
@@ -52,14 +53,16 @@ final class TrackingCode
     }
 
     /**
-     * @param array{scripts: int, inert: int}|null $stats filled for the top-level fragment only
+     * @param bool                                 $ownOutput true only when checking that our own output is a fixed point: a
+     *                                                        text/plain script of our category is then ours, not pasted
+     * @param array{scripts: int, inert: int}|null $stats     filled for the top-level fragment only
      * @param-out array{scripts: int, inert: int} $stats
      */
-    private static function rewrite(string $code, string $category, ?string $nonce, ?array &$stats = null): string
+    private static function rewrite(string $code, string $category, ?string $nonce, bool $ownOutput = false, ?array &$stats = null): string
     {
         $holder = self::parse($code);
 
-        $stats = self::process($holder, $category, $nonce);
+        $stats = self::process($holder, $category, $nonce, $ownOutput);
 
         return $holder->innerHTML;
     }
@@ -67,8 +70,16 @@ final class TrackingCode
     /**
      * @return array{scripts: int, inert: int} every script in the fragment, and how many of them were made inert
      */
-    private static function process(Element $root, string $category, ?string $nonce): array
+    private static function process(Element $root, string $category, ?string $nonce, bool $ownOutput): array
     {
+        // Tracking snippets never need <svg> or <math>, and foreign content is where the HTML parser's fragment and
+        // document modes disagree (a stray <p> leaves it only in a document), so it is refused before anything else.
+        // This gate is also the ONLY protection for <template> contents: the document parses in verify() cannot see
+        // inside <template>, so do not weaken it.
+        if ($root->querySelector('svg, math') !== null) {
+            throw new \UnexpectedValueException('Foreign content (svg/math) is not allowed in a tracking snippet.');
+        }
+
         $scripts = 0;
         $inert = 0;
 
@@ -80,9 +91,25 @@ final class TrackingCode
             ++$scripts;
             $type = (string) $script->getAttribute('type'); // the parser already kept the first duplicate
 
-            // Not executed by any browser, so nothing to hold back. Its attributes (a pasted nonce included) stay
-            // as pasted: this element can never be activated by the loader, which only touches our own scripts.
+            // Not executed by any browser, so nothing to hold back and the rest stays as parsed. But the loader
+            // activates any script[type="text/plain"][data-cmk-category], so pasted data-cmk-* attributes (a forged
+            // category) are always removed, and on a text/plain script a pasted nonce goes too (it would pass the
+            // loader's nonce check).
             if (!self::isExecutable($type)) {
+                $plain = self::essence($type) === 'text/plain';
+
+                if ($ownOutput && $plain && $script->getAttribute('data-cmk-category') === $category) {
+                    continue;
+                }
+
+                foreach (iterator_to_array($script->attributes) as $attribute) {
+                    $name = strtolower($attribute->nodeName);
+
+                    if (str_starts_with($name, 'data-cmk-') || ($plain && $name === 'nonce')) {
+                        $script->removeAttribute($attribute->nodeName);
+                    }
+                }
+
                 continue;
             }
 
@@ -113,27 +140,32 @@ final class TrackingCode
         // A template's content is a separate fragment that querySelectorAll does not enter (and PHP exposes
         // no accessor for it), so its markup is rewritten as a snippet of its own and put back.
         foreach (iterator_to_array($root->querySelectorAll('template')) as $template) {
-            $template->innerHTML = self::rewrite($template->innerHTML, $category, $nonce);
+            $template->innerHTML = self::rewrite($template->innerHTML, $category, $nonce, $ownOutput);
         }
 
         return ['scripts' => $scripts, 'inert' => $inert];
     }
 
     /**
-     * The serialised output is parsed again, the way a browser will parse the page: no script may be executable,
-     * no script may appear or disappear, every script made inert must still be inert (with the nonce when given),
-     * and rewriting the output again must change nothing.
+     * @return list<Element> every script element under the node, in document order (template contents excluded)
+     */
+    private static function scripts(ParentNode $root): array
+    {
+        return iterator_to_array($root->querySelectorAll('script'), false);
+    }
+
+    /**
+     * Checks the scripts of one parse of the output: none may be executable, none may appear or disappear, and every
+     * script made inert must still be inert (with the nonce when given).
      *
      * @param array{scripts: int, inert: int} $stats from the first pass
      */
-    private static function verify(string $output, string $category, ?string $nonce, array $stats): bool
+    private static function scriptsHold(ParentNode $parsed, string $category, ?string $nonce, array $stats): bool
     {
-        $scripts = 0;
+        $scripts = self::scripts($parsed);
         $inert = 0;
 
-        foreach (self::parse($output)->querySelectorAll('script') as $script) {
-            ++$scripts;
-
+        foreach ($scripts as $script) {
             if (self::isExecutable($script->getAttribute('type'))) {
                 return false;
             }
@@ -147,9 +179,33 @@ final class TrackingCode
             }
         }
 
-        return $scripts === $stats['scripts']
-            && $inert >= $stats['inert']
-            && self::rewrite($output, $category, $nonce) === $output;
+        return count($scripts) === $stats['scripts'] && $inert >= $stats['inert'];
+    }
+
+    /**
+     * The serialised output is parsed again, the way a browser will parse the page: as a fragment, and as a full
+     * document in both places a snippet can land (body and head), because a document parse breaks out of foreign
+     * content where the fragment parser does not. In every parse no script may be executable, no script may appear
+     * or disappear, and every script made inert must still be inert (with the nonce when given). Rewriting the
+     * output again must also change nothing.
+     *
+     * @param array{scripts: int, inert: int} $stats from the first pass
+     */
+    private static function verify(string $output, string $category, ?string $nonce, array $stats): bool
+    {
+        $parses = [
+            self::parse($output),
+            HTMLDocument::createFromString('<!DOCTYPE html><html><head></head><body>' . $output . '</body></html>', LIBXML_NOERROR),
+            HTMLDocument::createFromString('<!DOCTYPE html><html><head>' . $output . '</head><body></body></html>', LIBXML_NOERROR),
+        ];
+
+        foreach ($parses as $parsed) {
+            if (!self::scriptsHold($parsed, $category, $nonce, $stats)) {
+                return false;
+            }
+        }
+
+        return self::rewrite($output, $category, $nonce, true) === $output;
     }
 
     /**
@@ -164,7 +220,7 @@ final class TrackingCode
         }
 
         try {
-            $output = self::rewrite($code, $category, $nonce, $stats);
+            $output = self::rewrite($code, $category, $nonce, false, $stats);
 
             return self::verify($output, $category, $nonce, $stats) ? $output : '';
         } catch (\Throwable) {

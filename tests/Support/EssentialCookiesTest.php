@@ -93,7 +93,7 @@ final class EssentialCookiesTest extends TestCase
 
         $this->assertSame($names, array_column($rows, 'name'));
         $this->assertSame(['Keeps you signed in and your session working.', 'Session'], [$rows[0]['purpose'], $rows[0]['duration']]);
-        $this->assertSame(['Remembers that you signed in on this browser.', 'Session'], [$rows[1]['purpose'], $rows[1]['duration']]);
+        $this->assertSame(['Remembers that you signed in on this browser.', '2 weeks'], [$rows[1]['purpose'], $rows[1]['duration']]);
         $this->assertSame(["Keeps you signed in if you chose 'stay signed in'.", '2 weeks'], [$rows[2]['purpose'], $rows[2]['duration']]);
         $this->assertSame(['Remembers which site tree you were browsing in the dashboard.', 'Session'], [$rows[3]['purpose'], $rows[3]['duration']]);
         $this->assertSame($rows[3]['purpose'], $rows[4]['purpose']);
@@ -120,6 +120,12 @@ final class EssentialCookiesTest extends TestCase
         $this->assertSame('1 week', $duration(7 * 86400));
         $this->assertSame('1 day', $duration(86400));
         $this->assertSame('90 days', $duration('7776000'));
+    }
+
+    public function testTheSessionLoginCookieLastsAsLongAsTheRememberMeLifetime(): void
+    {
+        $this->assertSame('30 days', $this->describeWith(['MYSITE_LOGIN'], 180, 'MYSITE', 30 * 86400)[0]['duration']);
+        $this->assertSame('Session', $this->describeWith(['MYSITE'], 180, 'MYSITE', 30 * 86400)[0]['duration']);
     }
 
     public function testDescribeSingularDayForConsentLifetime(): void

@@ -262,7 +262,12 @@ final class ControllerSecurityTest extends TestCase
     public static function parseError(string $source): ?string
     {
         try {
-            token_get_all($source, TOKEN_PARSE);
+            // TOKEN_PARSE makes the tokenizer run the parser, which throws ParseError on invalid code.
+            $tokens = token_get_all($source, TOKEN_PARSE);
+
+            if ($tokens === []) {
+                return 'empty source';
+            }
         } catch (\ParseError $error) {
             return $error->getMessage() . ' on line ' . $error->getLine();
         }

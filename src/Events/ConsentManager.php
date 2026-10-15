@@ -52,11 +52,24 @@ class ConsentManager
         }
     }
 
-    private static function beforeRender(): void
+    private static function report(callable $onError, \Throwable $error): void
     {
-        $page = Page::getCurrentPage();
+        try {
+            $onError($error);
+        } catch (\Throwable) {
+        }
+    }
 
-        if (!$page || $page->isError() || $page->isAdminArea() || $page->isEditMode() || $page->isMasterCollection()) {
+    /**
+     * The gate is closed first, so a flag left open by an earlier request on a long-lived worker (a render that never
+     * reached its page output) cannot make this request's excluded page act; it opens again only after the
+     * exclusion checks below.
+     */
+    public static function beforeRender(?Page $page): void
+    {
+        self::$active = false;
+
+        if (!$page instanceof Page || $page->isError() || $page->isAdminArea() || $page->isEditMode() || $page->isMasterCollection()) {
             return;
         }
 
@@ -143,7 +156,8 @@ class ConsentManager
 
     public static function onBeforeRender(): void
     {
-        self::guarded(self::beforeRender(...));
+        self::reset();
+        self::guarded(static fn() => self::beforeRender(Page::getCurrentPage()));
     }
 
     /**
@@ -178,8 +192,8 @@ class ConsentManager
     }
 
     /**
-     * Pure: makes each snippet found verbatim in $contents inert. A snippet whose rewrite throws, or comes back
-     * empty, is removed from the output rather than left live.
+     * Pure: makes each snippet found verbatim in $contents inert, all in one pass over the original contents. A snippet whose rewrite throws, or
+     * comes back empty, is removed from the output rather than left live.
      *
      * @param list<string>                                     $snippets
      * @param callable(\Throwable): void                       $onError
@@ -188,26 +202,64 @@ class ConsentManager
     public static function rewriteSnippets(string $contents, array $snippets, ?string $nonce, callable $onError, ?callable $rewriter = null): string
     {
         $rewriter ??= TrackingCode::makeInert(...);
+        $replacements = [];
+        $ranges = [];
 
         foreach ($snippets as $code) {
-            if ($code === '' || !str_contains($contents, $code)) {
+            if ($code === '' || isset($replacements[$code])) {
                 continue;
             }
 
-            try {
-                $replacement = $rewriter($code, self::TRACKING_CATEGORY, $nonce);
-            } catch (\Throwable $e) {
-                $replacement = '';
+            $at = strpos($contents, $code);
 
-                try {
-                    $onError($e);
-                } catch (\Throwable) {
-                }
+            if ($at === false) {
+                continue;
             }
 
-            $contents = str_replace($code, $replacement, $contents);
+            for (; $at !== false; $at = strpos($contents, $code, $at + strlen($code))) {
+                $ranges[] = ['start' => $at, 'end' => $at + strlen($code), 'code' => $code];
+            }
+
+            try {
+                $replacements[$code] = $rewriter($code, self::TRACKING_CATEGORY, $nonce);
+            } catch (\Throwable $e) {
+                $replacements[$code] = '';
+                self::report($onError, $e);
+            }
         }
 
-        return $contents;
+        // Resolve the occurrences in the ORIGINAL contents, then rebuild in one left-to-right pass, so a replacement
+        // is never searched again and an earlier one cannot disturb a later snippet. An occurrence inside another
+        // is absorbed (longest wins). Two that straddle each other (neither contains the other) cannot both be
+        // honoured: their union is removed, which is the fail-closed outcome.
+        usort($ranges, static fn(array $a, array $b): int => [$a['start'], $b['end']] <=> [$b['start'], $a['end']]);
+
+        $kept = [];
+
+        foreach ($ranges as $range) {
+            $last = count($kept) - 1;
+
+            if ($last < 0 || $range['start'] >= $kept[$last]['end']) {
+                $kept[] = $range + ['conflict' => false];
+            } elseif ($range['end'] > $kept[$last]['end']) {
+                if (!$kept[$last]['conflict']) {
+                    self::report($onError, new \RuntimeException('Overlapping tracking snippets were removed.'));
+                }
+
+                $kept[$last]['end'] = $range['end'];
+                $kept[$last]['conflict'] = true;
+            }
+        }
+
+        $out = '';
+        $position = 0;
+
+        foreach ($kept as $range) {
+            $out .= substr($contents, $position, $range['start'] - $position)
+                . ($range['conflict'] ? '' : $replacements[$range['code']]);
+            $position = $range['end'];
+        }
+
+        return $kept === [] ? $contents : $out . substr($contents, $position);
     }
 }

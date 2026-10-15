@@ -30,7 +30,7 @@ declaration block, embed placeholders, translation assist, analytics and reports
 
 ## Blocking a script
 
-Mark a script as inert and give it a category handle:
+Mark a script as inert and give it a category handle. This pattern is for page templates and blocks, NOT for the SEO tracking-code field: those snippets are rewritten automatically, and pasted `data-cmk-*` attributes there are stripped.
 
 ```html
 <script type="text/plain" data-cmk-category="analytics" src="https://example.com/a.js"></script>
@@ -113,6 +113,7 @@ cookie's name, purpose and duration under the always-allowed category:
 - Upgrades re-create default categories that were deleted.
 - Scripts that already ran cannot be un-run; the page reloads on withdrawal.
 - The Appearance font option is "theme font" or "system font".
+- A tracking snippet that contains `<svg>` or `<math>` is removed entirely (it cannot be verified safely), and `data-cmk-*` attributes pasted into a tracking snippet's scripts are stripped.
 
 ## Developing
 
