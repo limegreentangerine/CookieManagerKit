@@ -6,7 +6,7 @@ use Concrete\Core\Page\Page;
 use Concrete\Core\Asset\AssetList;
 use Concrete\Core\Support\Facade\Url;
 use Concrete\Core\Localization\Localization;
-use CookieManagerKit\Support\{Catalog, LoaderScript, TrackingCode};
+use CookieManagerKit\Support\{Catalog, ErrorLog, LoaderScript, TrackingCode};
 
 /**
  * Front end entry point. The output depends only on the page and the admin's settings, never on the visitor, so
@@ -76,7 +76,31 @@ class ConsentManager
         $list->register('javascript', 'cookie-manager-kit/dashboard', 'js/cmk-dashboard.js', ['minify' => true, 'combine' => false], self::PACKAGE);
     }
 
+    /**
+     * Both hooks run on every public page, so a Catalog, database or cache failure must never become a 500 for the
+     * whole site: it is logged and the hook does nothing. Fail-open for the banner (no loader is injected, inert
+     * scripts simply stay inert); the page output is left unmodified.
+     *
+     * @param (callable(\Throwable): void)|null $onError defaults to the package error log
+     */
+    public static function guarded(callable $run, ?callable $onError = null): void
+    {
+        try {
+            $run();
+        } catch (\Throwable $e) {
+            try {
+                ($onError ?? ErrorLog::record(...))($e);
+            } catch (\Throwable) {
+            }
+        }
+    }
+
     public static function onBeforeRender(): void
+    {
+        self::guarded(self::beforeRender(...));
+    }
+
+    private static function beforeRender(): void
     {
         $page = Page::getCurrentPage();
 
@@ -119,6 +143,11 @@ class ConsentManager
      * inert and simply never activates, which is the safe failure.
      */
     public static function onPageOutput($event): void
+    {
+        self::guarded(static fn() => self::pageOutput($event));
+    }
+
+    private static function pageOutput($event): void
     {
         $contents = (string) $event->getArgument('contents');
         $repository = app('site')->getSite()->getConfigRepository();

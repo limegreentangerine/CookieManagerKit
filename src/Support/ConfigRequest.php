@@ -8,9 +8,13 @@ namespace CookieManagerKit\Support;
  */
 final class ConfigRequest
 {
+    /**
+     * Concrete's router trims trailing slashes, so with `concrete.seo.trailing_slash` on the URL the loader requests
+     * ends `.json/` and still reaches the route; the raw path info keeps that slash, so one is accepted here.
+     */
     public static function localeFromPath(string $path): ?string
     {
-        return preg_match('#/cookie-manager/config/([A-Za-z0-9_\-]{1,32})\.json\z#', $path, $match) === 1 ? $match[1] : null;
+        return preg_match('#/cookie-manager/config/([A-Za-z0-9_\-]{1,32})\.json/?\z#', $path, $match) === 1 ? $match[1] : null;
     }
 
     public static function matchesEtag(?string $header, string $etag): bool

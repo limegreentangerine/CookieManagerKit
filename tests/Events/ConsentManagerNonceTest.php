@@ -46,4 +46,50 @@ final class ConsentManagerNonceTest extends TestCase
             }
         }));
     }
+
+    public function testGuardedRunsTheCallable(): void
+    {
+        $ran = false;
+
+        ConsentManager::guarded(static function () use (&$ran): void {
+            $ran = true;
+        });
+
+        $this->assertTrue($ran);
+    }
+
+    public function testGuardedSwallowsAThrowableAndReportsItToTheHandler(): void
+    {
+        $caught = null;
+        $error = new \RuntimeException('database is down');
+
+        ConsentManager::guarded(static function () use ($error): void {
+            throw $error;
+        }, static function (\Throwable $e) use (&$caught): void {
+            $caught = $e;
+        });
+
+        $this->assertSame($error, $caught);
+    }
+
+    public function testGuardedSwallowsErrorsAndSurvivesAFailingHandler(): void
+    {
+        ConsentManager::guarded(static function (): void {
+            throw new \TypeError('bad');
+        }, static function (): void {
+            throw new \RuntimeException('handler failed too');
+        });
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function testGuardedDefaultHandlerDoesNotPropagate(): void
+    {
+        // The default handler is ErrorLog::record, which swallows its own failures (no container in unit tests).
+        ConsentManager::guarded(static function (): void {
+            throw new \RuntimeException('boom');
+        });
+
+        $this->addToAssertionCount(1);
+    }
 }
