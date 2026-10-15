@@ -50,6 +50,7 @@ node_modules
 .claude/
 .claude
 CLAUDE.md
+docs/
 
 # SDD working files
 .superpowers/
