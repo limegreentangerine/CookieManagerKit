@@ -53,6 +53,7 @@ final class TrackingCode
 
     /**
      * @param array{scripts: int, inert: int}|null $stats filled for the top-level fragment only
+     * @param-out array{scripts: int, inert: int} $stats
      */
     private static function rewrite(string $code, string $category, ?string $nonce, ?array &$stats = null): string
     {

@@ -9,6 +9,15 @@ use CookieManagerKit\Support\{Installer, Text};
 
 final class InstallerTest extends TestCase
 {
+    /**
+     * @param list<string> $existing
+     *
+     * @return list<string>
+     */
+    private function missing(array $existing): array
+    {
+        return array_column(Installer::missingCategories($existing), 'handle');
+    }
     public function testDefaultCategoriesAreValid(): void
     {
         $handles = array_column(Installer::CATEGORIES, 'handle');
@@ -37,16 +46,6 @@ final class InstallerTest extends TestCase
         $sorted = $sorts;
         sort($sorted);
         $this->assertSame($sorted, $sorts);
-    }
-
-    /**
-     * @param list<string> $existing
-     *
-     * @return list<string>
-     */
-    private function missing(array $existing): array
-    {
-        return array_column(Installer::missingCategories($existing), 'handle');
     }
 
     public function testAFirstInstallCreatesEveryDefault(): void
