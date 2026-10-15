@@ -313,3 +313,100 @@ describe('boot data', () => {
 		expect(live()).toHaveLength(1);
 	});
 });
+
+describe('hardening', () => {
+	it('treats an unreadable cookie jar as no consent and still exposes the full API', () => {
+		document.body.innerHTML =
+			'<script type="text/plain" data-cmk-category="analytics">a()</script>' +
+			'<script type="text/plain" data-cmk-category="necessary">m()</script>';
+		Object.defineProperty(document, 'cookie', {
+			configurable: true,
+			get: () => {
+				throw new Error('SecurityError');
+			},
+			set: () => {},
+		});
+
+		expect(() => start()).not.toThrow();
+		expect(window.cmk).toBeDefined();
+		expect(window.cmk.get()).toBeNull();
+		expect(window.cmk.has('necessary')).toBe(true);
+		expect(window.cmk.has('analytics')).toBe(false);
+		expect(live().map((s) => s.text)).toEqual(['m()']);
+
+		expect(() => window.cmk.save(['analytics'])).not.toThrow();
+		expect(live().map((s) => s.text)).toEqual(['a()', 'm()']);
+	});
+
+	it('tolerates event names that collide with Object.prototype members', () => {
+		start();
+
+		expect(() => {
+			window.cmk.on('__proto__', () => {});
+			window.cmk.on('constructor', () => {});
+			window.cmk.on('toString', () => {});
+		}).not.toThrow();
+		expect(() => window.cmk.save([])).not.toThrow();
+	});
+
+	it('always treats necessary as known, even when boot omits it', () => {
+		start({ v: 2, cats: ['analytics'], days: 180 });
+
+		expect(window.cmk.known).toContain('necessary');
+		window.cmk.save(['analytics']);
+
+		start({ v: 2, cats: ['analytics'], days: 180 }); // next page load
+
+		expect(window.cmk.get().c).toEqual(['necessary', 'analytics']);
+	});
+});
+
+describe('nonce mode', () => {
+	const NONCE_BOOT = { ...BOOT, nonce: true };
+
+	function inertWithNonce(category, code, nonce) {
+		const el = document.createElement('script');
+		el.type = 'text/plain';
+		el.setAttribute('data-cmk-category', category);
+		if (nonce) {
+			el.setAttribute('nonce', nonce);
+			try {
+				el.nonce = nonce;
+			} catch (e) {
+				/* property not supported by this jsdom */
+			}
+		}
+		el.text = code;
+		document.body.appendChild(el);
+		return el;
+	}
+
+	it('does not activate un-nonced inert scripts, even for consented or necessary categories', () => {
+		inertWithNonce('necessary', 'm()');
+		inertWithNonce('analytics', 'a()');
+		setConsent(valid(['necessary', 'analytics']));
+		start(NONCE_BOOT);
+
+		expect(live()).toHaveLength(0);
+		expect(document.querySelector('script[data-cmk-done]')).toBeNull();
+	});
+
+	it('activates nonced inert scripts and keeps the nonce on the live copy', () => {
+		inertWithNonce('analytics', 'a()', 'abc123');
+		inertWithNonce('analytics', 'two()');
+		setConsent(valid(['necessary', 'analytics']));
+		start(NONCE_BOOT);
+
+		const scripts = live();
+		expect(scripts.map((s) => s.text)).toEqual(['a()']);
+		expect(scripts[0].nonce || scripts[0].getAttribute('nonce')).toBe('abc123');
+	});
+
+	it('leaves behaviour unchanged when nonce mode is off', () => {
+		inertWithNonce('analytics', 'a()');
+		setConsent(valid(['necessary', 'analytics']));
+		start({ ...BOOT, nonce: false });
+
+		expect(live().map((s) => s.text)).toEqual(['a()']);
+	});
+});

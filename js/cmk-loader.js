@@ -19,7 +19,8 @@
 	var version = typeof boot.v === 'number' ? boot.v : 0;
 	var days = typeof boot.days === 'number' && boot.days > 0 ? boot.days : 180;
 	var known = [];
-	var handlers = {};
+	var handlers = Object.create(null);
+	var nonceMode = boot.nonce === true;
 	var current = null;
 
 	(Array.isArray(boot.cats) ? boot.cats : []).forEach(function (handle) {
@@ -28,8 +29,18 @@
 		}
 	});
 
+	if (known.indexOf(NECESSARY) === -1) {
+		known.unshift(NECESSARY); /* save() always records it, so parse() must accept it */
+	}
+
 	function readRaw() {
-		var parts = d.cookie ? d.cookie.split('; ') : [];
+		var parts;
+
+		try {
+			parts = d.cookie ? d.cookie.split('; ') : [];
+		} catch (e) {
+			return null; /* cookie jar unreadable (sandboxed iframe): treat as no consent */
+		}
 
 		for (var i = 0; i < parts.length; i++) {
 			var eq = parts[i].indexOf('=');
@@ -102,6 +113,16 @@
 				continue;
 			}
 
+			/*
+			 * With a CSP nonce on the page, only activate inert scripts the server nonced. Otherwise injected markup
+			 * that looks inert (text/plain) would become trusted live script via this loader.
+			 */
+			var nonce = inert.nonce || inert.getAttribute('nonce');
+
+			if (nonceMode && !nonce) {
+				continue;
+			}
+
 			inert.setAttribute('data-cmk-done', '1');
 
 			var live = d.createElement('script');
@@ -114,8 +135,8 @@
 				}
 			}
 
-			if (inert.nonce) {
-				live.nonce = inert.nonce;
+			if (nonce) {
+				live.nonce = nonce;
 			}
 
 			if (inert.getAttribute('data-cmk-type')) {
