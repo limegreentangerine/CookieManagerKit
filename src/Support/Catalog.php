@@ -200,7 +200,7 @@ final class Catalog
             self::snapshot(),
             self::resolveLocale($requestedLocale),
             self::defaultLocale(),
-            EssentialCookies::names(),
+            EssentialCookies::describe(EssentialCookies::names(), self::lifetimeDays()),
         );
     }
 

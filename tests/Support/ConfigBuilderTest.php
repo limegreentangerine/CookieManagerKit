@@ -88,7 +88,13 @@ final class ConfigBuilderTest extends TestCase
         $config = self::build(self::data());
 
         $this->assertSame(['necessary', 'marketing'], array_column($config['categories'], 'handle'));
-        $this->assertSame(['CONCRETE', 'cmk_consent'], $config['categories'][0]['cookies']);
+        $this->assertSame(
+            [
+                ['name' => 'CONCRETE', 'purpose' => '', 'duration' => ''],
+                ['name' => 'cmk_consent', 'purpose' => '', 'duration' => ''],
+            ],
+            $config['categories'][0]['cookies'],
+        );
         $this->assertSame([], $config['categories'][1]['cookies']);
         $this->assertSame('Tracks conversions', $config['categories'][1]['services'][0]['description']);
     }
@@ -194,5 +200,32 @@ final class ConfigBuilderTest extends TestCase
 
         $renamed = ConfigBuilder::build(self::data(), 'en_GB', 'en_GB', ['MYSITE', 'cmk_consent']);
         $this->assertNotSame($a, $renamed['version']);
+    }
+
+    public function testCookieRowsAreNormalised(): void
+    {
+        $config = ConfigBuilder::build(self::data(), 'en_GB', 'en_GB', [
+            'plain',
+            ['name' => 'rich', 'purpose' => 'Does a thing.', 'duration' => '2 weeks'],
+            ['name' => 'partial', 'purpose' => 5],
+            ['purpose' => 'no name'],
+            '',
+            42,
+        ]);
+
+        $this->assertSame([
+            ['name' => 'plain', 'purpose' => '', 'duration' => ''],
+            ['name' => 'rich', 'purpose' => 'Does a thing.', 'duration' => '2 weeks'],
+            ['name' => 'partial', 'purpose' => '', 'duration' => ''],
+        ], $config['categories'][0]['cookies']);
+    }
+
+    public function testVersionChangesWhenTheCookieDetailsChange(): void
+    {
+        $version = static fn(array $cookies): string => ConfigBuilder::build(self::data(), 'en_GB', 'en_GB', $cookies)['version'];
+
+        $this->assertSame($version(['a']), $version(['a']));
+        $this->assertNotSame($version(['a']), $version(['b']));
+        $this->assertNotSame($version([['name' => 'a', 'purpose' => 'x']]), $version([['name' => 'a', 'purpose' => 'y']]));
     }
 }

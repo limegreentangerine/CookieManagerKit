@@ -165,24 +165,35 @@
 		return items.length ? el('ul', { class: 'cmk__services' }, items) : null;
 	}
 
-	function cookiesList(category) {
-		var names = (Array.isArray(category.cookies) ? category.cookies : []).filter(
-			function (name) {
-				return typeof name === 'string' && name !== '';
-			}
-		);
+	function cookieEntry(entry) {
+		var item = typeof entry === 'string' ? { name: entry } : entry;
 
-		if (!names.length) {
+		if (
+			!item ||
+			typeof item !== 'object' ||
+			typeof item.name !== 'string' ||
+			item.name === ''
+		) {
 			return null;
 		}
 
-		return el(
-			'ul',
-			{ class: 'cmk__cookies' },
-			names.map(function (name) {
-				return el('li', {}, [el('code', { text: name })]);
-			})
-		);
+		var purpose = typeof item.purpose === 'string' ? item.purpose : '';
+		var duration = typeof item.duration === 'string' ? item.duration : '';
+		var detail =
+			(purpose ? ' \u2014 ' + purpose : '') + (duration ? ' (' + duration + ')' : '');
+
+		return el('li', {}, [
+			el('code', { text: item.name }),
+			detail ? d.createTextNode(detail) : null
+		]);
+	}
+
+	function cookiesList(category) {
+		var items = (Array.isArray(category.cookies) ? category.cookies : [])
+			.map(cookieEntry)
+			.filter(Boolean);
+
+		return items.length ? el('ul', { class: 'cmk__cookies' }, items) : null;
 	}
 
 	function ticked(prefs) {
@@ -474,7 +485,8 @@
 		mountWidget(config);
 
 		if (!cmk.get()) {
-			show(config, false, false);
+			// The centred modal traps Tab (aria-modal), so it holds focus from the start; other positions do not.
+			show(config, false, (config.style && config.style.position) === 'center-modal');
 		}
 	};
 

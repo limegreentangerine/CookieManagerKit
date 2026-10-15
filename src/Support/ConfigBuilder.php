@@ -58,9 +58,39 @@ final class ConfigBuilder
 
         return $rows;
     }
+
+    /**
+     * Plain names (backward compatible) and {name, purpose, duration} rows both become rows; anything else is dropped.
+     *
+     * @param array<int, mixed> $cookies
+     *
+     * @return list<array{name: string, purpose: string, duration: string}>
+     */
+    private static function cookieRows(array $cookies): array
+    {
+        $rows = [];
+
+        foreach ($cookies as $cookie) {
+            $row = is_string($cookie) ? ['name' => $cookie] : (is_array($cookie) ? $cookie : []);
+            $name = $row['name'] ?? '';
+
+            if (!is_string($name) || $name === '') {
+                continue;
+            }
+
+            $rows[] = [
+                'name' => $name,
+                'purpose' => is_string($row['purpose'] ?? null) ? $row['purpose'] : '',
+                'duration' => is_string($row['duration'] ?? null) ? $row['duration'] : '',
+            ];
+        }
+
+        return $rows;
+    }
+
     /**
      * @param array<string, mixed> $data
-     * @param list<string>         $essentialCookies
+     * @param list<mixed>          $essentialCookies names, or {name, purpose, duration} rows (see EssentialCookies::describe)
      *
      * @return array<string, mixed>
      */
@@ -101,7 +131,7 @@ final class ConfigBuilder
                 'title' => self::field($content, $locale, $defaultLocale, 'title', $handle),
                 'description' => self::field($content, $locale, $defaultLocale, 'description', ''),
                 'services' => $services,
-                'cookies' => $necessary ? array_values($essentialCookies) : [],
+                'cookies' => $necessary ? self::cookieRows($essentialCookies) : [],
             ];
         }
 

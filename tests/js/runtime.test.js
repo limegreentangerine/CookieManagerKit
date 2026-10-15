@@ -492,6 +492,20 @@ describe('focus trap for the centred modal', () => {
 		expect(document.activeElement).toBe(document.querySelector('a.cmk__link'));
 	});
 
+	it('moves focus to the title when first shown automatically', () => {
+		mount(modal());
+
+		expect(document.activeElement).toBe(document.getElementById('cmk-title'));
+	});
+
+	it('does not steal focus for the other positions', () => {
+		document.body.insertAdjacentHTML('beforeend', '<button id="before">x</button>');
+		document.getElementById('before').focus();
+		mount();
+
+		expect(document.activeElement).toBe(document.getElementById('before'));
+	});
+
 	it('does not trap other positions', () => {
 		mount();
 		expect(root().getAttribute('aria-modal')).toBe('false');
@@ -509,6 +523,43 @@ describe('focus trap for the centred modal', () => {
 		const event = tab();
 
 		expect(event.defaultPrevented).toBe(false);
+	});
+});
+
+describe('the always-allowed cookies', () => {
+	const withCookies = (cookies) => {
+		const cfg = config();
+		cfg.categories[0].cookies = cookies;
+		return cfg;
+	};
+	const items = () => [...document.querySelectorAll('.cmk__cookies li')];
+
+	it('shows name, purpose and duration as text', () => {
+		mount(withCookies([{ name: 'CONCRETE', purpose: 'Keeps you signed in.', duration: 'Session' }]));
+
+		expect(items()).toHaveLength(1);
+		expect(items()[0].querySelector('code').textContent).toBe('CONCRETE');
+		expect(items()[0].textContent).toBe('CONCRETE \u2014 Keeps you signed in. (Session)');
+	});
+
+	it('keeps hostile strings as text', () => {
+		mount(withCookies([{ name: '<img src=x onerror=alert(1)>', purpose: '<b>bold</b>', duration: '<i>x</i>' }]));
+
+		expect(document.querySelector('.cmk__cookies img, .cmk__cookies b, .cmk__cookies i')).toBeNull();
+		expect(items()[0].textContent).toContain('<b>bold</b>');
+		expect(items()[0].children).toHaveLength(1);
+	});
+
+	it('still renders old plain-string entries and skips junk', () => {
+		mount(withCookies(['CONCRETE', 42, null, { purpose: 'no name' }, { name: '' }, 'cmk_consent']));
+
+		expect(items().map((li) => li.textContent)).toEqual(['CONCRETE', 'cmk_consent']);
+	});
+
+	it('omits the dash and parentheses for empty parts', () => {
+		mount(withCookies([{ name: 'a', purpose: 'Does a thing.' }, { name: 'b', duration: 'Session' }, { name: 'c', purpose: '', duration: '' }]));
+
+		expect(items().map((li) => li.textContent)).toEqual(['a \u2014 Does a thing.', 'b (Session)', 'c']);
 	});
 });
 

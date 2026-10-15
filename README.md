@@ -86,7 +86,8 @@ from the cache. Without a CSP header this mode adds no protection.
 
 ## Essential ConcreteCMS cookies
 
-These are never blocked and are listed read-only on the Categories page:
+These are never blocked and are listed read-only on the Categories page. Visitors see each
+cookie's name, purpose and duration under the always-allowed category:
 
 - the session cookie (name read from `concrete.session.name` at request time, default
   `CONCRETE`) and `{session}_LOGIN`
