@@ -19,7 +19,8 @@ final class ControllerSecurityTest extends TestCase
     private const EXEMPT_ACTIONS = ['view', 'add', 'edit', 'on_start', '__construct'];
 
     private const OUTPUT_FUNCTIONS = [
-        'printf', 'vprintf', 'fprintf', 'print_r', 'var_dump', 'var_export', 'readfile', 'fpassthru',
+        'printf', 'vprintf', 'fprintf', 'vfprintf', 'print_r', 'var_dump', 'var_export', 'debug_zval_dump', 'highlight_string',
+        'readfile', 'fpassthru', 'passthru', 'system', 'exec', 'shell_exec', 'popen', 'proc_open',
     ];
 
     /**
@@ -40,7 +41,15 @@ final class ControllerSecurityTest extends TestCase
     {
         $tokens = [];
 
-        foreach (token_get_all($source) as $token) {
+        // Controller sources are valid PHP, so TOKEN_PARSE makes method names such as clone()/list()/new() T_STRING.
+        // A fixture that is deliberately not valid PHP falls back to plain tokenising.
+        try {
+            $raw = token_get_all($source, TOKEN_PARSE);
+        } catch (\ParseError) {
+            $raw = token_get_all($source);
+        }
+
+        foreach ($raw as $token) {
             if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
                 continue;
             }
@@ -158,12 +167,34 @@ final class ControllerSecurityTest extends TestCase
     private static function compact(array $body): string
     {
         $compact = '';
+        $closing = null;
 
         foreach ($body as $token) {
+            $id = self::id($token);
             $text = self::text($token);
 
-            if (self::id($token) === T_CONSTANT_ENCAPSED_STRING) {
-                $text = in_array(substr($text, 1, -1), ['submit'], true) ? "'submit'" : "'s'";
+            if ($closing !== null) {
+                // Inside an interpolated string or heredoc: nothing in here is code.
+                if ($id === $closing) {
+                    $closing = null;
+                }
+
+                continue;
+            }
+
+            if ($id === '"' || $id === '`') {
+                $closing = $id;
+                $text = "'s'";
+            } elseif ($id === T_START_HEREDOC) {
+                $closing = T_END_HEREDOC;
+                $text = "'s'";
+            } elseif ($id === T_CONSTANT_ENCAPSED_STRING) {
+                $text = substr($text, 1, -1) === 'submit' ? "'submit'" : "'s'";
+            }
+
+            // Keep words apart (`return false`) but otherwise stay compact.
+            if ($compact !== '' && preg_match('/[A-Za-z0-9_]$/', $compact) === 1 && preg_match('/^[A-Za-z0-9_]/', $text) === 1) {
+                $compact .= ' ';
             }
 
             $compact .= $text;
@@ -442,11 +473,12 @@ final class ControllerSecurityTest extends TestCase
         foreach ($tokens as $at => $token) {
             $id = self::id($token);
 
-            if (in_array($id, [T_ECHO, T_OPEN_TAG_WITH_ECHO, T_PRINT, T_EXIT], true)) {
-                $problems[] = self::text($token);
+            if (in_array($id, [T_ECHO, T_OPEN_TAG_WITH_ECHO, T_PRINT, T_EXIT, T_INLINE_HTML], true)) {
+                $problems[] = trim(self::text($token));
             } elseif (in_array($id, [T_STRING, T_NAME_FULLY_QUALIFIED], true)
-                && in_array(ltrim(self::text($token), '\\'), self::OUTPUT_FUNCTIONS, true)
-                && ($tokens[$at + 1] ?? null) === '(') {
+                && in_array(strtolower(ltrim(self::text($token), '\\')), self::OUTPUT_FUNCTIONS, true)
+                && ($tokens[$at + 1] ?? null) === '('
+                && !in_array(self::id($tokens[$at - 1] ?? ''), [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION], true)) {
                 $problems[] = self::text($token) . '()';
             }
         }
@@ -683,6 +715,27 @@ public function save()
     }
 }
 PHP, false],
+            'clone with guards' => [self::keywordAction('clone', true), true],
+            'clone without guards' => [self::keywordAction('clone', false), false],
+            'list with guards' => [self::keywordAction('list', true), true],
+            'list without guards' => [self::keywordAction('list', false), false],
+            'default with guards' => [self::keywordAction('default', true), true],
+            'default without guards' => [self::keywordAction('default', false), false],
+            'empty with guards' => [self::keywordAction('empty', true), true],
+            'empty without guards' => [self::keywordAction('empty', false), false],
+            'new with guards' => [self::keywordAction('new', true), true],
+            'new without guards' => [self::keywordAction('new', false), false],
+            'unset with guards' => [self::keywordAction('unset', true), true],
+            'unset without guards' => [self::keywordAction('unset', false), false],
+            'return false' => [self::returnAction('return false;'), true],
+            'return null' => [self::returnAction('return null;'), true],
+            'return new RedirectResponse' => [self::returnAction("return new RedirectResponse('/x');"), true],
+            'return Redirect::to' => [self::returnAction("return Redirect::to('/x');"), true],
+            'no return at all' => [self::returnAction('$this->flash(\'error\', \'x\');'), false],
+            'return only in an interpolated string' => [self::returnAction('$this->flash(\'error\', "Bad request;return $x");'), false],
+            'return only in an interpolated string with braces' => [self::returnAction('$m = "a {$x} ;return b";'), false],
+            'return only in a heredoc' => [self::returnAction("\$m = <<<TXT\nBad;return \$x\nTXT;\n"), false],
+            'return only in a nowdoc' => [self::returnAction("\$m = <<<'TXT'\nBad;return \$x\nTXT;\n"), false],
             'wrong token key' => [<<<'PHP'
 public function save()
 {
@@ -692,6 +745,20 @@ public function save()
 }
 PHP, false],
         ];
+    }
+
+    private static function keywordAction(string $name, bool $guarded): string
+    {
+        $guards = $guarded
+            ? "if (!\$this->request->isPost()) { return; }\n    if (!\$this->token->validate('submit')) { return; }\n"
+            : '';
+
+        return 'public function ' . $name . "(\$id)\n{\n    " . $guards . "    \$this->entityManager->flush();\n}";
+    }
+
+    private static function returnAction(string $statements): string
+    {
+        return "public function save()\n{\n    if (!\$this->request->isPost()) {\n        " . $statements . "\n    }\n    if (!\$this->token->validate('submit')) {\n        return;\n    }\n}";
     }
 
     #[DataProvider('actionProvider')]
@@ -754,6 +821,20 @@ PHP, false],
             'qualified printf' => ['public function a() { \\printf(\'%s\', $x); }', false],
             'flash message mentioning die' => ['public function a() { $this->flash(\'error\', \'Could not die or exit or echo\'); }', true],
             'comment mentioning exit' => ["public function a() { // exit early\n /* print_r(\$x) */ return; }", true],
+            'mixed case print_r' => ['public function a() { Print_R($x); }', false],
+            'upper case var_dump' => ['public function a() { VAR_DUMP($x); }', false],
+            'mixed case printf' => ['public function a() { PrintF(\'%s\', $x); }', false],
+            'vfprintf' => ['public function a() { vfprintf($h, \'%s\', [$x]); }', false],
+            'debug_zval_dump' => ['public function a() { debug_zval_dump($x); }', false],
+            'highlight_string' => ['public function a() { highlight_string($x); }', false],
+            'passthru' => ['public function a() { passthru($x); }', false],
+            'system' => ['public function a() { system($x); }', false],
+            'exec' => ['public function a() { exec($x); }', false],
+            'shell_exec' => ['public function a() { shell_exec($x); }', false],
+            'popen' => ['public function a() { popen($x, \'r\'); }', false],
+            'proc_open' => ['public function a() { proc_open($x, [], $p); }', false],
+            'inline html' => ["public function a() { ?>hello<?php }", false],
+            'method call named exec' => ['public function a() { $this->connection->exec($x); }', true],
             'method named like a function' => ['public function a() { return $this->printf; }', true],
         ];
     }

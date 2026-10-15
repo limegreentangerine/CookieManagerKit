@@ -188,8 +188,8 @@ final class ViewEscapingTest extends TestCase
     }
 
     private const FORBIDDEN_FUNCTIONS = [
-        'printf', 'vprintf', 'fprintf', 'print_r', 'var_dump', 'var_export', 'readfile', 'fpassthru',
-        'passthru', 'system', 'exec', 'shell_exec', 'popen', 'proc_open',
+        'printf', 'vprintf', 'fprintf', 'vfprintf', 'print_r', 'var_dump', 'var_export', 'debug_zval_dump', 'highlight_string',
+        'readfile', 'fpassthru', 'passthru', 'system', 'exec', 'shell_exec', 'popen', 'proc_open',
     ];
 
     /**
@@ -207,8 +207,19 @@ final class ViewEscapingTest extends TestCase
         }
 
         $problems = [];
+        $inBacktick = false;
 
         foreach ($tokens as $at => $token) {
+            if ($token === '`') {
+                $inBacktick = !$inBacktick;
+
+                if ($inBacktick) {
+                    $problems[] = 'backtick shell execution';
+                }
+
+                continue;
+            }
+
             if (!is_array($token)) {
                 continue;
             }
@@ -216,8 +227,9 @@ final class ViewEscapingTest extends TestCase
             if (in_array($token[0], [T_PRINT, T_EVAL, T_EXIT], true)) {
                 $problems[] = $token[1];
             } elseif (in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)
-                && in_array(ltrim($token[1], '\\'), self::FORBIDDEN_FUNCTIONS, true)
-                && ($tokens[$at + 1] ?? null) === '(') {
+                && in_array(strtolower(ltrim($token[1], '\\')), self::FORBIDDEN_FUNCTIONS, true)
+                && ($tokens[$at + 1] ?? null) === '('
+                && !(is_array($tokens[$at - 1] ?? null) && in_array($tokens[$at - 1][0], [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION], true))) {
                 $problems[] = $token[1] . '()';
             }
         }
@@ -244,6 +256,14 @@ final class ViewEscapingTest extends TestCase
         $this->assertSame(['print_r()'], self::outputConstructProblems('<?php print_r($a); ?>'));
         $this->assertSame(['var_dump()'], self::outputConstructProblems('<?php var_dump($a); ?>'));
         $this->assertSame(['\\printf()'], self::outputConstructProblems('<?php \\printf($a); ?>'));
+        $this->assertSame(['Print_R()'], self::outputConstructProblems('<?php Print_R($a); ?>'));
+        $this->assertSame(['VAR_DUMP()'], self::outputConstructProblems('<?php VAR_DUMP($a); ?>'));
+        $this->assertSame(['PrintF()'], self::outputConstructProblems('<?php PrintF($a); ?>'));
+        $this->assertSame(['vfprintf()'], self::outputConstructProblems('<?php vfprintf($h, $f, $a); ?>'));
+        $this->assertSame(['debug_zval_dump()'], self::outputConstructProblems('<?php debug_zval_dump($a); ?>'));
+        $this->assertSame(['highlight_string()'], self::outputConstructProblems('<?php highlight_string($a); ?>'));
+        $this->assertSame(['backtick shell execution'], self::outputConstructProblems('<?php $a = `ls`; ?>'));
+        $this->assertSame([], self::outputConstructProblems('<?php $a->exec($b); ?>'));
         $this->assertSame(['die'], self::outputConstructProblems('<?php die("x"); ?>'));
         $this->assertSame([], self::outputConstructProblems("<?php defined('C5_EXECUTE') or die('Access Denied.'); ?>"));
         $this->assertSame([], self::outputConstructProblems('<?php // print_r($a) ?><?php echo O::e(\'printf(\'); ?>'));
