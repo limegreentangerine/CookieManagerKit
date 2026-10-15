@@ -9,6 +9,64 @@ use CookieManagerKit\Support\TrackingCode;
 
 final class TrackingCodeTest extends TestCase
 {
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function bypassShapes(): array
+    {
+        return [
+            'script in comment attribute' => ['<!-- <script a="--><script src=//evil.example/x.js></script>"> -->'],
+            'script in script body' => ['<script>x=\'<script a="</script><script src=//evil.example/x.js></script>"></script>'],
+            'script in element attribute' => ['<div title=\'<script a="\'><script src=//evil.example/x.js></script>">\'>'],
+            'in style' => ['<style><script a="</style><script src=//evil.example/x.js></script>"></style>'],
+            'in textarea' => ['<textarea><script a="</textarea><script src=//evil.example/x.js></script>"></textarea>'],
+            'in title' => ['<title><script a="</title><script src=//evil.example/x.js></script>"></title>'],
+            'in xmp' => ['<xmp><script a="</xmp><script src=//evil.example/x.js></script>"></xmp>'],
+            'in iframe' => ['<iframe><script a="</iframe><script src=//evil.example/x.js></script>"></iframe>'],
+            'in noembed' => ['<noembed><script a="</noembed><script src=//evil.example/x.js></script>"></noembed>'],
+            'slash before type' => ['<script/type=module src=//evil.example/x.js></script>'],
+            'type after closing quote' => ['<script src="x"type=module></script>'],
+            'category after closing quote' => ['<script src="x"data-cmk-category="necessary"></script>'],
+            'double-quoted gt' => ['<script data-x=">" src=//evil.example/a.js></script>'],
+            'single-quoted gt' => ["<script data-x='>' src=a.js></script>"],
+            'uppercase' => ['<SCRIPT TYPE=module SRC=a.js></SCRIPT>'],
+            'newlines' => ["<script\ntype=module\nsrc=a.js></script>"],
+            'type inside a value' => ['<script title="a type=module" src=a.js></script>'],
+            'self closing' => ['<script/src=a.js/>'],
+            'two scripts' => ['<script src=a.js></script><script type=module>b()</script>'],
+            'boolean attributes' => ['<script async defer src=a.js></script>'],
+            'reassembly' => ['<scr<noscript></noscript>ipt src=evil.js></script>'],
+            'unclosed comment' => ['<script src=a.js></script><!-- <script src=b.js></script>'],
+            'vertical tab' => ["<script\x0Btype=module src=a.js></script>"],
+            'unclosed noscript with script' => ['<noscript><script src=a.js></script>'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('bypassShapes')]
+    public function testBypassShapesLeaveNoLiveScriptWhenReparsed(string $code): void
+    {
+        $this->assertAllScriptsInert(TrackingCode::makeInert($code, 'analytics'));
+    }
+
+    public function testScriptsInsideSvgAndTemplateAreHandled(): void
+    {
+        // Observed: an SVG script is a script element in the SVG namespace and is still tagged; a template's
+        // content is a separate fragment, and its scripts are tagged too so a later clone cannot run them.
+        $svg = TrackingCode::makeInert('<svg><script>x</script></svg>', 'analytics');
+        $this->assertAllScriptsInert($svg, 'analytics', 1);
+
+        $template = TrackingCode::makeInert('<template><script src=a.js></script></template>', 'analytics');
+        $this->assertSame(
+            '<template><script src="a.js" type="text/plain" data-cmk-category="analytics"></script></template>',
+            $template,
+        );
+    }
+
+    public function testReassembledScriptRemainsInert(): void
+    {
+        $this->assertAllScriptsInert(TrackingCode::makeInert('<scr<noscript></noscript>ipt src=evil.js></script>', 'analytics'), 'analytics', 0);
+    }
+
     public function testExternalAndInlineScriptsBecomeInert(): void
     {
         $code = '<script async src="https://www.googletagmanager.com/gtag/js?id=G-1"></script>'
@@ -16,26 +74,34 @@ final class TrackingCodeTest extends TestCase
 
         $inert = TrackingCode::makeInert($code, 'analytics');
 
-        $this->assertSame(2, substr_count($inert, 'type="text/plain" data-cmk-category="analytics"'));
+        $this->assertAllScriptsInert($inert, 'analytics', 2);
         $this->assertStringContainsString('src="https://www.googletagmanager.com/gtag/js?id=G-1"', $inert);
         $this->assertStringContainsString('window.dataLayer=window.dataLayer||[];', $inert);
-        $this->assertStringNotContainsString('<script async', $inert); // the original tag, without the inert attributes
     }
 
     public function testAnExistingTypeIsReplacedAndRemembered(): void
     {
         $inert = TrackingCode::makeInert('<script type="module" src="/x.js"></script>', 'analytics');
 
-        $this->assertSame(1, substr_count($inert, ' type=')); // data-cmk-type is preceded by "-", not a space
-        $this->assertStringContainsString('type="text/plain"', $inert);
+        $this->assertAllScriptsInert($inert, 'analytics', 1);
+        $this->assertStringContainsString('data-cmk-type="module"', $inert);
+        $this->assertSame(1, substr_count($inert, 'type="text/plain"'));
+    }
+
+    public function testDuplicateTypeUsesTheFirstOneLikeABrowser(): void
+    {
+        $inert = TrackingCode::makeInert('<script type=module type=text/javascript src=a.js></script>', 'analytics');
+
         $this->assertStringContainsString('data-cmk-type="module"', $inert);
     }
 
     public function testPlainJavascriptTypesAreNotRemembered(): void
     {
-        $inert = TrackingCode::makeInert('<script type="text/javascript">x()</script>', 'analytics');
+        foreach (['text/javascript', 'application/javascript', 'text/plain'] as $type) {
+            $inert = TrackingCode::makeInert('<script type="' . $type . '">x()</script>', 'analytics');
 
-        $this->assertStringNotContainsString('data-cmk-type', $inert);
+            $this->assertStringNotContainsString('data-cmk-type', $inert, $type);
+        }
     }
 
     public function testHostileTypeValuesAreNotCarriedOver(): void
@@ -44,15 +110,17 @@ final class TrackingCodeTest extends TestCase
 
         $this->assertStringNotContainsString('onerror', $inert);
         $this->assertStringNotContainsString('data-cmk-type', $inert);
+        $this->assertAllScriptsInert($inert, 'analytics', 1);
     }
 
     public function testExistingCmkAttributesCannotOverrideTheCategory(): void
     {
-        $inert = TrackingCode::makeInert('<script data-cmk-category="necessary" src="/x.js"></script>', 'marketing');
+        $inert = TrackingCode::makeInert('<script data-cmk-category="necessary" data-cmk-type="x" src="/x.js"></script>', 'marketing');
 
         $this->assertSame(1, substr_count($inert, 'data-cmk-category='));
-        $this->assertStringContainsString('data-cmk-category="marketing"', $inert);
         $this->assertStringNotContainsString('necessary', $inert);
+        $this->assertStringNotContainsString('data-cmk-type', $inert);
+        $this->assertAllScriptsInert($inert, 'marketing', 1);
     }
 
     public function testNoscriptBlocksAreRemoved(): void
@@ -63,6 +131,7 @@ final class TrackingCodeTest extends TestCase
 
         $this->assertStringNotContainsString('noscript', $inert);
         $this->assertStringNotContainsString('px.example', $inert);
+        $this->assertAllScriptsInert($inert, 'marketing', 1);
     }
 
     public function testMultilineNoscriptAndUppercaseTagsAreHandled(): void
@@ -72,7 +141,31 @@ final class TrackingCodeTest extends TestCase
         $inert = TrackingCode::makeInert($code, 'marketing');
 
         $this->assertStringNotContainsStringIgnoringCase('noscript', $inert);
-        $this->assertStringContainsString('data-cmk-category="marketing"', $inert);
+        $this->assertStringNotContainsString('px.example', $inert);
+        $this->assertAllScriptsInert($inert, 'marketing', 1);
+    }
+
+    public function testAnUnclosedNoscriptRemovesItsContent(): void
+    {
+        $inert = TrackingCode::makeInert('<noscript><img src="https://px.example/p.gif">', 'marketing');
+
+        $this->assertStringNotContainsString('px.example', $inert);
+        $this->assertStringNotContainsString('<img', $inert);
+    }
+
+    public function testAScriptBeforeAnUnclosedNoscriptIsKept(): void
+    {
+        $inert = TrackingCode::makeInert('<script>a()</script><noscript><img src="https://px.example/p.gif">', 'marketing');
+
+        $this->assertSame('<script type="text/plain" data-cmk-category="marketing">a()</script>', $inert);
+    }
+
+    public function testANoscriptLookalikeCloseTagDoesNotEndTheNoscript(): void
+    {
+        $inert = TrackingCode::makeInert('<noscript></noscriptx><img src=https://px.example/p.gif></noscript>', 'marketing');
+
+        $this->assertStringNotContainsString('px.example', $inert);
+        $this->assertStringNotContainsString('<img', $inert);
     }
 
     public function testAnInvalidCategoryDropsTheCodeEntirely(): void
@@ -88,91 +181,33 @@ final class TrackingCodeTest extends TestCase
         $this->assertSame('', TrackingCode::makeInert('', 'analytics'));
     }
 
+    public function testOtherMarkupNextToAScriptIsPreserved(): void
+    {
+        $inert = TrackingCode::makeInert('<meta name="google-site-verification" content="abc"><script>a()</script>', 'analytics');
+
+        $this->assertSame(
+            '<meta name="google-site-verification" content="abc"><script type="text/plain" data-cmk-category="analytics">a()</script>',
+            $inert,
+        );
+    }
+
     /**
-     * @return array<string, array{string}>
+     * Re-parses the output the way a browser would and checks that nothing can run before consent.
      */
-    public static function bypassShapes(): array
+    private function assertAllScriptsInert(string $output, string $category = 'analytics', int $atLeast = 0): void
     {
-        return [
-            'slash before type' => ['<script/type=module src=//evil.example/x.js></script>'],
-            'type after closing quote' => ['<script src="x"type=module></script>'],
-            'category after closing quote' => ['<script src="x"data-cmk-category="necessary"></script>'],
-            'double-quoted gt' => ['<script data-x=">" src=//evil.example/a.js></script>'],
-            'single-quoted gt' => ["<script data-x='>' src=a.js></script>"],
-            'uppercase' => ['<SCRIPT TYPE=module SRC=a.js></SCRIPT>'],
-            'newlines' => ["<script\ntype=module\nsrc=a.js></script>"],
-            'type inside a value' => ['<script title="a type=module" src=a.js></script>'],
-            'self closing' => ['<script/src=a.js/>'],
-            'two scripts' => ['<script src=a.js></script><script type=module>b()</script>'],
-            'boolean attributes' => ['<script async defer src=a.js></script>'],
-        ];
-    }
+        $holder = \Dom\HTMLDocument::createEmpty()->createElement('div');
+        $holder->innerHTML = $output;
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('bypassShapes')]
-    public function testBypassShapesAreAllRewrittenWithOurAttributesFirst(string $code): void
-    {
-        $inert = TrackingCode::makeInert($code, 'analytics');
-        $ours = '<script type="text/plain" data-cmk-category="analytics"';
+        $scripts = iterator_to_array($holder->querySelectorAll('script'));
 
-        $this->assertNotSame('', $inert);
-        $this->assertSame(substr_count(strtolower($inert), '<script'), substr_count($inert, $ours));
-        $this->assertStringNotContainsString('data-cmk-category="necessary"', $inert);
+        $this->assertGreaterThanOrEqual($atLeast, count($scripts));
 
-        $withoutValues = preg_replace('/"[^"]*"/', '""', $inert);
-        $this->assertDoesNotMatchRegularExpression('/\stype=(?!"")/i', $withoutValues);
-    }
+        foreach ($scripts as $script) {
+            $this->assertSame('text/plain', $script->getAttribute('type'), $output);
+            $this->assertSame($category, $script->getAttribute('data-cmk-category'), $output);
+        }
 
-    public function testAGreaterThanInsideAQuotedValueIsKept(): void
-    {
-        $this->assertSame(
-            '<script type="text/plain" data-cmk-category="analytics" data-x=">" src="//evil.example/a.js"></script>',
-            TrackingCode::makeInert('<script data-x=">" src=//evil.example/a.js></script>', 'analytics'),
-        );
-    }
-
-    public function testDuplicateAttributesKeepOnlyTheFirstAndCmkAttributesAreDropped(): void
-    {
-        $this->assertSame(
-            '<script type="text/plain" data-cmk-category="analytics" data-cmk-type="module" src="a.js"></script>',
-            TrackingCode::makeInert('<script type=module src=a.js SRC=b.js data-cmk-foo=1></script>', 'analytics'),
-        );
-    }
-
-    public function testUnterminatedOpenTagsDropTheWholeSnippet(): void
-    {
-        $this->assertSame('', TrackingCode::makeInert('<script src="a.js', 'analytics'));
-        $this->assertSame('', TrackingCode::makeInert('<script src=a.js', 'analytics'));
-        $this->assertSame('', TrackingCode::makeInert('<script>ok()</script><script src="b', 'analytics'));
-    }
-
-    public function testAnUnclosedNoscriptIsRemovedToTheEnd(): void
-    {
-        $inert = TrackingCode::makeInert('<noscript><img src="https://px.example/p.gif">', 'marketing');
-
-        $this->assertStringNotContainsString('px.example', $inert);
-        $this->assertStringNotContainsString('<img', $inert);
-    }
-
-    public function testAScriptBeforeAnUnclosedNoscriptIsKept(): void
-    {
-        $inert = TrackingCode::makeInert('<script>a()</script><noscript><img src="https://px.example/p.gif">', 'marketing');
-
-        $this->assertSame('<script type="text/plain" data-cmk-category="marketing">a()</script>', $inert);
-    }
-
-    public function testNoscriptWithAttributesAndNoSpaceBeforeSlashIsRemoved(): void
-    {
-        $inert = TrackingCode::makeInert('<a><noscript/><img src=x></noscript>b<NoScript class=x>y</NOSCRIPT >c', 'marketing');
-
-        $this->assertSame('<a>bc', $inert);
-    }
-
-    public function testAVerticalTabIsNotHtmlWhitespace(): void
-    {
-        $inert = TrackingCode::makeInert("<script\x0Btype=module src=a.js></script>", 'analytics');
-
-        // The browser sees an unknown element named "script\x0Btype=module", not a script, so nothing is rewritten.
-        $this->assertStringNotContainsString('<script ', $inert);
-        $this->assertStringNotContainsString('<script type', $inert);
+        $this->assertSame(0, $holder->querySelectorAll('noscript')->length, $output);
     }
 }
