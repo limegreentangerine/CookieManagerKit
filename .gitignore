@@ -1,0 +1,45 @@
+# Composer
+vendor/
+/vendor/
+
+# Environment / local configuration
+.env
+.env.*
+!.env.example
+
+# IDEs / editors
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing / coverage
+.phpunit.result.cache
+.phpunit.cache/
+coverage/
+.phpunit/
+
+# PHP CS Fixer
+.php-cs-fixer.cache
+
+# PHPStan
+.phpstan.cache/
+
+# Psalm
+.psalm-cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# node
+node_modules/
+node_modules

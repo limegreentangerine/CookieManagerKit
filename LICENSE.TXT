@@ -1,0 +1,12 @@
+Copyright (c) 2026 Limegreentangerine
+
+This software is proprietary and confidential.
+
+Permission to use, copy, modify, or distribute this software is
+granted only to authorised employees and contractors of
+Limegreentangerine for internal business purposes.
+
+Unauthorised copying, distribution, publication, sublicensing,
+or commercial use is prohibited.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

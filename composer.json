@@ -1,0 +1,59 @@
+{
+	"name": "limegreentangerine/composer_package",
+	"description": "composer_description",
+	"type": "concrete5-package",
+	"license": "proprietary",
+	"minimum-stability": "stable",
+	"autoload": {
+		"psr-4": {
+			"ComposerPackage\\": "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"ComposerPackage\\Tests\\": "tests/"
+		}
+	},
+	"authors": [],
+	"require": {
+		"limegreentangerine/class_kit": "^1.0"
+	},
+	"require-dev": {
+		"php": "^8.4",
+		"phpunit/phpunit": "^11",
+		"concrete5/core": "^9.2",
+		"friendsofphp/php-cs-fixer": "^3.95",
+		"phpstan/phpstan": "^2.2"
+	},
+	"config": {
+		"allow-plugins": {
+			"mlocati/composer-patcher": true
+		}
+	},
+	"scripts": {
+		"typecheck": "./vendor/bin/phpstan analyse -c phpstan.neon --error-format=table || true",
+		"test": "php -d error_reporting=\"E_ALL & ~E_DEPRECATED\" vendor/bin/phpunit",
+		"test-coverage": "php -d error_reporting=\"E_ALL & ~E_DEPRECATED\" vendor/bin/phpunit --coverage-text",
+		"format:php": "php-cs-fixer fix",
+		"format:php:check": "php-cs-fixer check --diff",
+		"format:js": "npx prettier --write .",
+		"format:js:check": "npx prettier --check .",
+		"format": [
+			"@format:php",
+			"@format:js"
+		],
+		"format:check": [
+			"@format:php:check",
+			"@format:js:check"
+		],
+		"post-install-cmd": [
+			"npm install"
+		]
+	},
+	"repositories": [
+		{
+			"type": "composer",
+			"url": "https://packages.limegreentangerine.net"
+		}
+	]
+}

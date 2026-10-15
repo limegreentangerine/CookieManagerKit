@@ -1,0 +1,27 @@
+{
+	"name": "composer_package",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"directories": {
+		"test": "tests"
+	},
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/limegreentangerine/composer_package.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "commonjs",
+	"bugs": {
+		"url": "https://github.com/limegreentangerine/composer_package/issues"
+	},
+	"homepage": "https://github.com/limegreentangerine/composer_package#readme",
+	"devDependencies": {
+		"prettier": "^3.9.6"
+	}
+}
