@@ -53,7 +53,7 @@ final class LoaderScriptTest extends TestCase
     {
         $boot = LoaderScript::boot(3, ['necessary', 'analytics'], 180, '/cfg.json?v=a', '/post', 'abcDEF123456==', '/event');
 
-        $this->assertSame(['v', 'cats', 'days', 'cfg', 'post', 'event', 'nonce'], array_keys($boot));
+        $this->assertSame(['v', 'cats', 'days', 'cfg', 'post', 'event', 'scan', 'nonce'], array_keys($boot));
         $this->assertSame(3, $boot['v']);
         $this->assertSame(['necessary', 'analytics'], $boot['cats']);
         $this->assertSame(180, $boot['days']);
@@ -87,6 +87,17 @@ final class LoaderScriptTest extends TestCase
     {
         $boot = LoaderScript::boot(1, ["<a>&'x\"", '</script>'], 1, "';alert(1);//<>&", '"><img>', null);
         $json = Output::json($boot);
+
+        foreach (['<', '>', '&', "'"] as $char) {
+            $this->assertStringNotContainsString($char, $json);
+        }
+    }
+
+    public function testBootScanUrlDefaultsToEmptyAndIsEncoded(): void
+    {
+        $this->assertSame('', LoaderScript::boot(1, [], 1, '', '', null)['scan']);
+
+        $json = Output::json(LoaderScript::boot(1, [], 1, '', '', null, '', '"><script>x</script>'));
 
         foreach (['<', '>', '&', "'"] as $char) {
             $this->assertStringNotContainsString($char, $json);

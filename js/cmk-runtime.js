@@ -575,6 +575,27 @@
 		state.started = false;
 	};
 
+	runtime.startBeacon = function () {
+		var url = boot.scan;
+
+		// Only a same-origin path is ever loaded; the marker cookie exists only in an admin's browser in scan mode.
+		if (
+			typeof url !== 'string' ||
+			!/^\/(?!\/)/.test(url) ||
+			d.cookie.indexOf('cmk_scan=1') === -1 ||
+			d.querySelector('script[data-cmk-beacon]')
+		) {
+			return;
+		}
+
+		var script = d.createElement('script');
+
+		script.src = url;
+		script.async = true;
+		script.setAttribute('data-cmk-beacon', '');
+		(d.head || d.documentElement).appendChild(script);
+	};
+
 	w.cmkRuntime = runtime;
 
 	function ready(fn) {
@@ -583,6 +604,10 @@
 		} else {
 			fn();
 		}
+	}
+
+	if (!boot.manual) {
+		ready(runtime.startBeacon);
 	}
 
 	if (!boot.manual && boot.cfg && typeof w.fetch === 'function') {
