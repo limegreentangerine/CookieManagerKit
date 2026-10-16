@@ -75,12 +75,6 @@ final class Services
      */
     public static function runCrawl(): ScanRun
     {
-        try {
-            $runner = self::crawlRunner();
-        } catch (UnsafeUrl $e) {
-            return CrawlRunner::recordFailure(self::em(), time(), $e);
-        }
-
-        return $runner->run();
+        return CrawlRunner::runOrRecordFailure(self::em(), time(), static fn(): CrawlRunner => self::crawlRunner());
     }
 }

@@ -58,9 +58,20 @@ class Scanner extends DashboardPageController
 
         try {
             @set_time_limit(300);
-            $run = Services::crawlRunner()->run();
+            $cannotStart = false;
+            $run = CrawlRunner::runOrRecordFailure($this->entityManager, time(), static function () use (&$cannotStart): CrawlRunner {
+                try {
+                    return Services::crawlRunner();
+                } catch (UnsafeUrl $e) {
+                    $cannotStart = true;
 
-            if ($run->getStatus() === ScanRun::COMPLETE) {
+                    throw $e;
+                }
+            });
+
+            if ($cannotStart) {
+                $this->flash('error', t('The site cannot be crawled. Set the site canonical URL; see the help on the Scanner Settings page for local sites.'));
+            } elseif ($run->getStatus() === ScanRun::COMPLETE) {
                 $this->flash('success', t('Crawled %1$s pages: %2$s new, %3$s changed.', $run->getPagesScanned(), $run->getNewCount(), $run->getChangedCount()));
             } else {
                 $this->flash('error', t('The crawl could not finish. Details are in the cookie_manager log.'));

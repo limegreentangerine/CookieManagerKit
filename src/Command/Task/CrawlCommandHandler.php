@@ -76,7 +76,7 @@ class CrawlCommandHandler implements OutputAwareInterface
 
     protected function crawl(): ScanRun
     {
-        return Services::crawlRunner()->run();
+        return Services::runCrawl();
     }
 
     protected function lastRuntimeScanAt(): ?int

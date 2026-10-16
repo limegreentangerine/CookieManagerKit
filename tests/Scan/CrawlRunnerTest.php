@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use CookieManagerKit\Scan\Finding;
 use CookieManagerKit\Scan\Scanner;
 use CookieManagerKit\Entity\ScanRun;
+use CookieManagerKit\Scan\UnsafeUrl;
 use CookieManagerKit\Scan\UrlSource;
 use CookieManagerKit\Entity\Settings;
 use CookieManagerKit\Scan\Classifier;
@@ -336,6 +337,34 @@ final class CrawlRunnerTest extends TestCase
         $this->assertSame(ScanRun::CRAWL, $run->getSource());
         $this->assertSame(500, $run->getFinishedAt());
         $this->assertSame([$run], $persisted);
+    }
+
+    public function testARunnerThatCannotBeBuiltRecordsAFailedRun(): void
+    {
+        $persisted = [];
+        $em = EmFactory::make($this);
+        $em->method('persist')->willReturnCallback(static function (object $entity) use (&$persisted): void {
+            $persisted[] = $entity;
+        });
+
+        $run = CrawlRunner::runOrRecordFailure($em, 500, static function (): CrawlRunner {
+            throw new UnsafeUrl('no canonical');
+        });
+
+        $this->assertSame(ScanRun::FAILED, $run->getStatus());
+        $this->assertSame([$run], $persisted);
+    }
+
+    public function testAlreadyRunningStillPropagatesThroughRunOrRecordFailure(): void
+    {
+        $running = (new ScanRun())->start(ScanRun::CRAWL, 1000000 - 60);
+        $em = $this->emWithRuns([$running]);
+        $em->expects($this->never())->method('persist');
+        $runner = $this->runner(['https://e.com/'], new ScanResult([], 1, 0), null, 999990, $em);
+
+        $this->expectException(\CookieManagerKit\Scan\CrawlAlreadyRunning::class);
+
+        CrawlRunner::runOrRecordFailure($em, 1000000, static fn(): CrawlRunner => $runner);
     }
 
     public function testAFreshRunningCrawlBlocksASecondOne(): void

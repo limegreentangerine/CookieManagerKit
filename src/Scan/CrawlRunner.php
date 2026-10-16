@@ -135,6 +135,23 @@ final class CrawlRunner
     }
 
     /**
+     * Builds a runner and runs it; when the runner cannot even be built (UnsafeUrl: no canonical URL, host not
+     * scannable) a failed run is recorded and returned. CrawlAlreadyRunning and every error from run() propagate.
+     *
+     * @param \Closure(): self $make
+     */
+    public static function runOrRecordFailure(EntityManagerInterface $em, int $now, \Closure $make): ScanRun
+    {
+        try {
+            $runner = $make();
+        } catch (UnsafeUrl $e) {
+            return self::recordFailure($em, $now, $e);
+        }
+
+        return $runner->run();
+    }
+
+    /**
      * @throws \Throwable whatever the scanner raised, after the run has been marked failed; a fixed-message
      *                    RuntimeException when the findings or the result could not be stored
      */
