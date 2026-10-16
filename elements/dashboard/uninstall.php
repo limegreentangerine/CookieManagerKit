@@ -6,6 +6,6 @@
 <div class="checkbox">
     <label>
         <input type="checkbox" name="purge_database_tables" value="1">
-        <?php echo t('Also delete all banner text, categories, services, statistics and settings (this cannot be undone)') ?>
+        <?php echo t('Also delete all banner text, categories, services, statistics, the consent log and settings (this cannot be undone)') ?>
     </label>
 </div>

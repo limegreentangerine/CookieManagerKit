@@ -14,7 +14,7 @@ live site.
 - PHP 8.4. The tracking-snippet rewriter uses PHP 8.4's `\Dom\HTMLDocument` HTML5 parser.
 - The `class_kit` package.
 
-## What it does (phases 1 and 2)
+## What it does (phases 1 to 3)
 
 - Consent categories and services, managed under `/dashboard/cookie_manager`.
 - Multilingual banner text: plain text, one set per site locale. The default locale comes
@@ -25,10 +25,9 @@ live site.
 - Banner styling with a live preview (Appearance page).
 - Anonymous banner statistics (Statistics page, see below).
 - A cookie and script scanner with a review queue (Scanner pages, see below).
+- A consent log, re-consent with a recorded reason, Google Consent Mode v2 and an opt-in or opt-out default model (see below).
 
-Not built yet (later phases): consent audit log, regional rules and GPC,
-policy re-consent flow beyond the "Ask every visitor again" checkbox, Google Consent Mode,
-declaration block, embed placeholders, translation assist, A/B testing, and report export
+Not built yet (later phases): regional rules, declaration block, embed placeholders, translation assist, A/B testing, and report export
 and sharing.
 
 ## Statistics
@@ -115,6 +114,26 @@ Alerts are the counts on the Scanner page plus an optional **plain-text** email 
 - IPv6-only site hosts are not scanned.
 - Scan mode does not re-report single-page-app navigations.
 
+## Consent log and privacy
+
+`Dashboard > Cookie Manager > Consent Log` records every choice a visitor makes, so you can show when and how consent was given. Each entry stores a random consent ID, the policy version, the categories chosen, what triggered the choice (for example the banner, the settings panel or a re-consent), the locale, a coarse browser and device bucket such as `Chrome/desktop`, and the time. The consent ID is kept in the visitor's `cmk_consent` cookie (as `i`), so a later change by the same browser adds an entry to the same record. No IP address, region or raw user agent is stored.
+
+Filter the log by date, trigger, policy version, category or consent ID, and download a CSV (it includes the re-consent reason). Mention the log in your own privacy notice.
+
+The scheduled task **Purge old consent records** (`cmk_purge_consent_log`) deletes a browser's history 24 months after its last choice by default. Change the number of months on the Banner page. The task is registered when the package is installed or updated, so run **Update** after upgrading.
+
+"Ask every visitor again" now needs a reason. It is kept in a history on the Banner page and in the log export. Approving a scanner finding that adds a service to an optional category offers a one-click "Ask visitors again"; it is never automatic.
+
+### Google Consent Mode v2
+
+Off by default (Banner page). When on, every signal starts denied and updates from the visitor's choice: analytics sets `analytics_storage`; marketing sets `ad_storage`, `ad_user_data` and `ad_personalization`; preferences sets `functionality_storage` and `personalization_storage`.
+
+### Default model and Global Privacy Control
+
+The Banner page sets what happens before a visitor chooses. **Opt-in** (the default) keeps optional categories off until they agree. **Opt-out** lets optional categories run until they object, and is not suitable for visitors in the EU or UK. A browser that sends Global Privacy Control always starts with Marketing off, and the banner is still shown.
+
+With opt-out, a visitor whose stored choice is from an older policy version, whose cookie is unreadable, or who blocks cookies is treated as having made no choice, so optional categories run until they choose. Opt-in keeps optional categories off in every one of those cases.
+
 ## Blocking a script
 
 Mark a script as inert and give it a category handle. This pattern is for page templates and blocks, NOT for the SEO tracking-code field: those snippets are rewritten automatically, and pasted `data-cmk-*` attributes there are stripped.
@@ -144,7 +163,7 @@ load it through a marked script.
 - "Ask every visitor again" bumps the policy version, so everyone is asked again.
 - Withdrawing a category reloads the page, because scripts that already ran cannot be
   un-run.
-- An unreadable, invalid or stale cookie counts as no consent.
+- An unreadable, invalid or stale cookie counts as no consent (with the opt-out default model, "no consent" means optional categories run until the visitor chooses).
 - External scripts keep their relative order. Inline scripts run immediately, so an inline
   script that follows an external one is not guaranteed to wait for it to finish loading.
 
