@@ -14,9 +14,18 @@ final class InMemoryFindingStore implements FindingStore
 
     public int $flushes = 0;
 
+    public int $allCalls = 0;
+
     public function all(): array
     {
+        $this->allCalls++;
+
         return $this->findings;
+    }
+
+    public function findByFingerprints(array $fingerprints): array
+    {
+        return array_intersect_key($this->findings, array_flip($fingerprints));
     }
 
     public function add(ScanFinding $finding): void

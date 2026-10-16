@@ -31,18 +31,45 @@ final class FindingIngestor
     /**
      * @param list<Finding> $found
      * @param bool          $markGone only honoured for a crawl: true when every page was fetched and nothing was excluded or cut off
+     *
+     * Failure handling: a concurrent insert of the same fingerprint raises a UniqueConstraintViolationException on
+     * flush, which closes the EntityManager. Callers (the scan runner, the beacon endpoint) must treat any exception
+     * from here as a failed run / fixed error response and must not reuse the EntityManager afterwards.
+     *
+     * Concurrency: this reads, changes, then flushes once, without row locks. An admin decision made in that window can
+     * be overwritten. That is accepted: the crawl ingest runs after the crawl has finished and admin actions touch a
+     * single row.
+     *
+     * The `unclassified` count in the summary is a total over the findings loaded by this call: every stored finding
+     * when gone-marking, otherwise only those just seen.
+     *
+     * @throws \InvalidArgumentException when $source is neither a crawl nor a beacon
      */
     public function ingest(array $found, string $source, int $now, bool $markGone): IngestSummary
     {
-        $existing = $this->store->all();
+        if (!in_array($source, [ScanRun::CRAWL, ScanRun::BEACON], true)) {
+            throw new \InvalidArgumentException('Unknown finding source.');
+        }
+
+        $markGone = $markGone && $source === ScanRun::CRAWL;
+        $candidates = [];
+
+        foreach ($found as $item) {
+            // identify() caps name and host before hashing, so the fingerprint must come from the same capped values.
+            $candidate = (new ScanFinding())->identify($item->kind, $item->name, $item->host);
+            $candidates[] = $candidate;
+        }
+
+        $existing = $markGone
+            ? $this->store->all()
+            : $this->store->findByFingerprints(array_map(static fn(ScanFinding $c): string => $c->getFingerprint(), $candidates));
         $seen = [];
         $new = 0;
         $changed = 0;
         $newItems = [];
 
-        foreach ($found as $item) {
-            // identify() caps name and host before hashing, so the fingerprint must come from the same capped values.
-            $candidate = (new ScanFinding())->identify($item->kind, $item->name, $item->host);
+        foreach ($found as $index => $item) {
+            $candidate = $candidates[$index];
             $fingerprint = $candidate->getFingerprint();
             $seen[$fingerprint] = true;
             $finding = $existing[$fingerprint] ?? null;
@@ -78,13 +105,13 @@ final class FindingIngestor
             }
         }
 
-        if ($markGone && $source === ScanRun::CRAWL) {
+        if ($markGone) {
             foreach ($existing as $fingerprint => $finding) {
-                if (isset($seen[$fingerprint]) || !$finding->hasSource('crawl')) {
+                if (isset($seen[$fingerprint]) || !$finding->hasSource(ScanRun::CRAWL)) {
                     continue;
                 }
 
-                $finding->removeSource('crawl');
+                $finding->removeSource(ScanRun::CRAWL);
 
                 if ($finding->sources() === [] && $finding->getStatus() !== ScanFinding::GONE) {
                     $finding->markGone();

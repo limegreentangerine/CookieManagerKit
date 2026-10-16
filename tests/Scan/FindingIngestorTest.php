@@ -252,6 +252,40 @@ final class FindingIngestorTest extends TestCase
         $this->assertSame(0, $summary->changed);
     }
 
+    public function testARunThatMarksNothingGoneNeverLoadsEveryFinding(): void
+    {
+        $ingestor = $this->ingestor();
+        $ingestor->ingest([self::cookie('a')], 'crawl', 100, true);
+        $this->store->allCalls = 0;
+
+        $ingestor->ingest([self::cookie('a'), self::cookie('b')], 'beacon', 200, false);
+        $ingestor->ingest([self::cookie('a')], 'crawl', 300, false);
+
+        $this->assertSame(0, $this->store->allCalls);
+        $this->assertSame(['crawl', 'beacon'], $this->found('cookie', 'a', 'e.com')->sources());
+    }
+
+    public function testAnUnknownSourceIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->ingestor()->ingest([self::cookie('a')], 'import', 100, false);
+    }
+
+    public function testAMatchedFindingFallsBackToUnclassifiedWhenItsClassificationDisappears(): void
+    {
+        $this->ingestor(self::ga())->ingest([self::cookie('_ga'), self::cookie('_gb')], 'crawl', 100, false);
+        $this->found('cookie', '_gb', 'e.com')->setStatus(ScanFinding::APPROVED);
+
+        $this->ingestor()->ingest([self::cookie('_ga'), self::cookie('_gb')], 'crawl', 200, false);
+
+        $matched = $this->found('cookie', '_ga', 'e.com');
+
+        $this->assertSame(ScanFinding::UNCLASSIFIED, $matched->getStatus());
+        $this->assertNull($matched->getSuggestedCategory());
+        $this->assertSame(ScanFinding::APPROVED, $this->found('cookie', '_gb', 'e.com')->getStatus());
+    }
+
     protected function setUp(): void
     {
         $this->store = new InMemoryFindingStore();

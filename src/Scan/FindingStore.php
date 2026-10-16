@@ -14,6 +14,13 @@ interface FindingStore
      */
     public function all(): array;
 
+    /**
+     * @param list<string> $fingerprints
+     *
+     * @return array<string, ScanFinding> the stored findings with those fingerprints, keyed by fingerprint
+     */
+    public function findByFingerprints(array $fingerprints): array;
+
     public function add(ScanFinding $finding): void;
 
     public function flush(): void;
