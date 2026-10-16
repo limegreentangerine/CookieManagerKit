@@ -10,7 +10,7 @@ use CookieManagerKit\Scan\ClassificationStore;
 use Concrete\Core\Support\Facade\{Events, Route};
 use CookieManagerKit\Support\{Catalog, Installer};
 use ClassKit\Package\Traits\{AttributeTrait, BlockTrait, PageTrait};
-use CookieManagerKit\Consent\{ConsentRecorder, NullConsentRecorder};
+use CookieManagerKit\Consent\{ConsentRecorder, DoctrineConsentLogStore, PersistingConsentRecorder};
 
 class Controller extends PackageController
 {
@@ -226,8 +226,7 @@ class Controller extends PackageController
 
     public function registerEvents(): void
     {
-        // Phase 3 rebinds this to a recorder that writes the audit log.
-        app()->bind(ConsentRecorder::class, NullConsentRecorder::class);
+        app()->bind(ConsentRecorder::class, static fn() => new PersistingConsentRecorder(new DoctrineConsentLogStore(app(EntityManagerInterface::class))));
 
         Events::addListener('on_before_render', function () {
             ConsentManager::onBeforeRender();

@@ -3,9 +3,10 @@
 namespace CookieManagerKit\Consent;
 
 /**
- * Extension point: phase 1 binds a no-op; the audit log (phase 3) binds an implementation that stores the choice.
+ * Stores a visitor's choice. Returns the visitor's consent ID, or null when nothing was stored. Never throws: a
+ * failure to record must not change what the visitor sees.
  */
 interface ConsentRecorder
 {
-    public function record(ConsentChoice $choice): void;
+    public function record(ConsentChoice $choice): ?string;
 }
