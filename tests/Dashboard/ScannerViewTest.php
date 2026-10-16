@@ -132,6 +132,7 @@ final class ScannerViewTest extends TestCase
         $this->assertStringContainsString('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;', $html);
         $this->assertStringContainsString('allow_private_network', $html);
         $this->assertStringContainsString('site.test', $html);
+        $this->assertStringContainsString('SEO &amp; Statistics &gt; URLs and Redirection', $html);
         $this->assertStringNotContainsString('/refreshNow', $html);
     }
 

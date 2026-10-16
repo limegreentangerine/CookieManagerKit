@@ -46,4 +46,4 @@ use CookieManagerKit\Support\Output as O;
 <hr>
 
 <h3><?php echo t('Crawling a local or private site') ?></h3>
-<p class="text-muted"><?php echo t('A crawl needs the site canonical URL to be set (Dashboard, System, Environment, Urls and Languages). A site served from a local address is refused by default. For local development, set the config key cookie_manager_kit.scan.allow_private_network to true and give the site a dotted hostname such as site.test. Leave it off in production.') ?></p>
+<p class="text-muted"><?php echo t('A crawl needs the site canonical URL to be set (Dashboard > System & Settings > SEO & Statistics > URLs and Redirection, field "Canonical URL"). A site served from a local address is refused by default. For local development, set the config key cookie_manager_kit.scan.allow_private_network to true and give the site a dotted hostname such as site.test. Leave it off in production.') ?></p>

@@ -104,7 +104,7 @@ The optional download is the [Open Cookie Database](https://github.com/jkwakman/
 
 ### Scheduling and alerts
 
-Under `Dashboard > System > Automation` there are two tasks: **Scan the site for cookies and scripts** (`cmk_scan_crawl`) and **Update cookie classification data** (`cmk_refresh_classification`). The crawl task does nothing unless "Run the scheduled crawl" is ticked in Scanner Settings and a canonical URL exists; the update task does nothing unless downloading is ticked. The tasks are registered when the package is installed or updated, so run **Update** after upgrading.
+Under `Dashboard > System & Settings > Automation > Tasks` there are two tasks: **Scan the site for cookies and scripts** (`cmk_scan_crawl`) and **Update cookie classification data** (`cmk_refresh_classification`). The crawl task does nothing unless "Run the scheduled crawl" is ticked in Scanner Settings and a canonical URL exists; the update task does nothing unless downloading is ticked. The tasks are registered when the package is installed or updated, so run **Update** after upgrading.
 
 Alerts are the counts on the Scanner page plus an optional **plain-text** email (counts and names only) to the address you set in Scanner Settings. There is no menu badge. The Scanner page also warns when no scan-mode run has happened for the number of days you set (the scheduled crawl cannot run scan mode).
 
