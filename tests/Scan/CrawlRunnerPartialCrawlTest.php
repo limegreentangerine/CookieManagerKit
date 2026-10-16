@@ -18,7 +18,6 @@ use CookieManagerKit\Scan\FetchResult;
 use CookieManagerKit\Scan\ScanContext;
 use CookieManagerKit\Scan\CrawlScanner;
 use CookieManagerKit\Entity\ScanFinding;
-use Doctrine\ORM\EntityManagerInterface;
 use CookieManagerKit\Scan\FindingIngestor;
 
 /**
@@ -48,10 +47,15 @@ final class CrawlRunnerPartialCrawlTest extends TestCase
             {
                 return $this->pages;
             }
+
+            public function dropped(): int
+            {
+                return 0;
+            }
         };
 
         return (new CrawlRunner(
-            $this->createMock(EntityManagerInterface::class),
+            EmFactory::make($this),
             $settings ?? new Settings(),
             $source,
             $scanner ?? new CrawlScanner(new FakeFetcher($responses), $clock),

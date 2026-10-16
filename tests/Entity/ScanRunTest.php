@@ -45,4 +45,12 @@ final class ScanRunTest extends TestCase
 
         $this->assertSame([0, 0, 0, 0], [$run->getNewCount(), $run->getChangedCount(), $run->getUnclassifiedCount(), $run->getPagesScanned()]);
     }
+
+    public function testSawEverythingDefaultsToFalse(): void
+    {
+        $run = new ScanRun();
+
+        $this->assertFalse($run->sawEverything());
+        $this->assertTrue($run->setSawEverything(true)->sawEverything());
+    }
 }

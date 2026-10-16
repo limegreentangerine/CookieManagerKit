@@ -14,18 +14,30 @@ use Concrete\Core\Support\Facade\Url;
  * At most LIMIT pages are listed. The crawl cap (Settings, at most 500) is far below that, so a site with more pages
  * than LIMIT is always seen as truncated by the runner and never has findings marked gone.
  *
- * External-link pages are skipped: their URL is not a page of this site.
+ * Only the current site's pages are listed. External-link pages are skipped: their URL is not a page of this site.
+ * Pages that cannot be listed (an error page, an unusable URL, anything beyond LIMIT) are counted by dropped(), and the
+ * runner then treats the crawl as not having seen everything.
+ *
+ * Members-only pages answer an anonymous visitor with a 403 or a redirect, so they fail when fetched and the crawl is
+ * incomplete (nothing goes `gone`) until they are added to the exclude list.
  */
 final class PublishedPages implements UrlSource
 {
     private const LIMIT = 5000;
 
+    private int $dropped = 0;
+
     public function __construct(private readonly string $baseUrl) {}
+
+    public function dropped(): int
+    {
+        return $this->dropped;
+    }
 
     public function all(): array
     {
         $list = new PageList();
-        $list->setSiteTreeToAll();
+        $list->setSiteTreeObject(app('site')->getSite());
         $list->ignorePermissions();
         $list->sortByCollectionIDAscending();
 
@@ -34,21 +46,40 @@ final class PublishedPages implements UrlSource
         // The pager reads the current page from the request (?ccm_paging_p=), which a web request could set.
         $pagination->setCurrentPage(1);
 
-        $urls = [];
+        $resolved = [];
 
         foreach ($pagination->getCurrentPageResults() as $page) {
-            if (!$page instanceof Page || $page->isError() || $page->isExternalLink()) {
+            if (!$page instanceof Page) {
+                $resolved[] = null;
+
                 continue;
             }
 
-            $url = self::rebase((string) Url::to($page), $this->baseUrl);
-
-            if ($url !== null) {
-                $urls[] = $url;
+            if ($page->isExternalLink()) {
+                continue;
             }
+
+            $resolved[] = $page->isError() ? null : self::rebase((string) Url::to($page), $this->baseUrl);
         }
 
-        return $urls;
+        $listed = self::summarise($resolved, (int) $pagination->getNbResults());
+        $this->dropped = $listed['dropped'];
+
+        return $listed['urls'];
+    }
+
+    /**
+     * @param list<string|null> $resolved one entry per listed page: its URL, or null when it could not be turned into one
+     * @param int               $total    how many pages the list holds in all, including those beyond the window
+     *
+     * @return array{urls: list<string>, dropped: int}
+     */
+    public static function summarise(array $resolved, int $total): array
+    {
+        $urls = array_values(array_filter($resolved, static fn(?string $url): bool => $url !== null));
+        $beyondWindow = max(0, $total - self::LIMIT);
+
+        return ['urls' => $urls, 'dropped' => count($resolved) - count($urls) + $beyondWindow];
     }
 
     /**

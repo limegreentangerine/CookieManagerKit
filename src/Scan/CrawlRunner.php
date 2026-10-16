@@ -21,6 +21,13 @@ use Doctrine\ORM\EntityManagerInterface;
  *    site's own pages completely, so such a crawl never marks anything gone. (PublishedPages rebases every URL onto
  *    the canonical host, so with the real source this never triggers.)
  *
+ * Members-only pages answer the anonymous crawler with a 403 or a redirect, so they count as failed pages and the crawl is
+ * incomplete (sawEverything false, nothing goes `gone`) until they are added to the exclude list.
+ *
+ * Overlap: run() first sweeps crawl runs abandoned in `running` (ScanRuns::sweepStaleCrawls) and throws
+ * CrawlAlreadyRunning, before recording anything, if a non-stale crawl is still running. The scheduled task and the
+ * dashboard's "run now" should catch it and show its fixed message (ALREADY_RUNNING).
+ *
  * Failure handling: an exception from the scanner or the ingest marks the run failed. Ingest can raise a unique
  * constraint race or a database error, either of which closes the EntityManager, so the failure is recorded through
  * the DBAL connection and the EntityManager is not used again. Ingest failures are logged and rethrown with a fixed
@@ -29,6 +36,7 @@ use Doctrine\ORM\EntityManagerInterface;
 final class CrawlRunner
 {
     public const STORE_FAILED = 'The crawl could not store its findings.';
+    public const ALREADY_RUNNING = 'A crawl is already running.';
     public const RECORD_FAILED = 'The crawl could not record its result.';
 
     /**
@@ -69,12 +77,17 @@ final class CrawlRunner
         foreach ($listed as $url) {
             $parts = parse_url((string) $url);
             $host = is_array($parts) ? Host::normalise($parts['host'] ?? null) : null;
+            $scheme = is_array($parts) ? strtolower((string) ($parts['scheme'] ?? '')) : '';
 
-            if ($host === $this->siteHost) {
-                $kept[] = (string) $url;
-            } else {
+            if (!is_array($parts) || $host !== $this->siteHost || !in_array($scheme, ['http', 'https'], true)) {
                 $dropped++;
+
+                continue;
             }
+
+            // Rebuilt on the normalised host: no credentials, no fragment, no trailing-dot or upper-case host.
+            $path = (string) ($parts['path'] ?? '/');
+            $kept[] = $scheme . '://' . $host . (isset($parts['port']) ? ':' . (int) $parts['port'] : '') . ($path === '' ? '/' : $path) . (isset($parts['query']) ? '?' . $parts['query'] : '');
         }
 
         return ['urls' => $kept, 'dropped' => $dropped];
@@ -114,7 +127,8 @@ final class CrawlRunner
         try {
             $em->persist($run);
             $em->flush();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            ErrorLog::record(new \RuntimeException('The failed crawl run could not be recorded: ' . $e::class));
         }
 
         return $run;
@@ -126,12 +140,19 @@ final class CrawlRunner
      */
     public function run(): ScanRun
     {
+        ScanRuns::sweepStaleCrawls($this->em, $this->now());
+
+        if (ScanRuns::crawlIsRunning($this->em, $this->now())) {
+            throw new CrawlAlreadyRunning(self::ALREADY_RUNNING);
+        }
+
         $run = (new ScanRun())->start(ScanRun::CRAWL, $this->now());
         $this->em->persist($run);
         $this->em->flush();
 
         try {
             $listed = $this->onSiteHost($this->urls->all());
+            $listed['dropped'] += $this->urls->dropped();
             $selected = UrlSelector::select($listed['urls'], $this->settings->getScanExcludes(), $this->settings->getScanMaxPages());
             $result = $this->scanner->scan(new ScanContext($this->siteHost, $selected['urls']));
         } catch (\Throwable $e) {
@@ -150,7 +171,7 @@ final class CrawlRunner
         try {
             $summary = $this->ingestor->ingest($result->findings, ScanRun::CRAWL, $this->now(), $sawEverything);
         } catch (\Throwable $e) {
-            ErrorLog::record($e);
+            ErrorLog::record(new \RuntimeException(self::STORE_FAILED . ' ' . $e::class));
             $this->fail($run);
 
             throw new \RuntimeException(self::STORE_FAILED);
@@ -167,10 +188,11 @@ final class CrawlRunner
         try {
             $run->setPagesScanned($result->pagesScanned)
                 ->setCounts($summary->new, $summary->changed, $summary->unclassified)
+                ->setSawEverything($sawEverything)
                 ->finish(ScanRun::COMPLETE, $this->now());
             $this->em->flush();
         } catch (\Throwable $e) {
-            ErrorLog::record($e);
+            ErrorLog::record(new \RuntimeException(self::RECORD_FAILED . ' ' . $e::class));
             $this->fail($run);
 
             throw new \RuntimeException(self::RECORD_FAILED);

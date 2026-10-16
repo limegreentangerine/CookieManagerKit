@@ -40,4 +40,18 @@ final class PublishedPagesTest extends TestCase
     {
         $this->assertSame('http://example.com:8080/a', PublishedPages::rebase('https://elsewhere.example.net/a', 'http://example.com:8080'));
     }
+
+    public function testUnlistablePagesAndPagesBeyondTheWindowAreCountedAsDropped(): void
+    {
+        $listed = PublishedPages::summarise(['https://e.com/', null, 'https://e.com/a', null], 4);
+
+        $this->assertSame(['https://e.com/', 'https://e.com/a'], $listed['urls']);
+        $this->assertSame(2, $listed['dropped']);
+        $this->assertSame(1002, PublishedPages::summarise(['https://e.com/'], 5000 + 1002)['dropped']);
+    }
+
+    public function testACleanListDropsNothing(): void
+    {
+        $this->assertSame(0, PublishedPages::summarise(['https://e.com/'], 1)['dropped']);
+    }
 }

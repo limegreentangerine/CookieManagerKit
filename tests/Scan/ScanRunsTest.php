@@ -19,6 +19,16 @@ final class ScanRunsTest extends TestCase
         return $status === ScanRun::RUNNING ? $run : $run->finish($status, $started + 10);
     }
 
+    private function emWith(array $runs): EntityManagerInterface&\PHPUnit\Framework\MockObject\MockObject
+    {
+        $repository = $this->createMock(ObjectRepository::class);
+        $repository->method('findBy')->willReturn($runs);
+        $em = $this->createMock(EntityManagerInterface::class);
+        $em->method('getRepository')->willReturn($repository);
+
+        return $em;
+    }
+
     public function testARunningBeaconRunAcceptsReportsInsideItsSession(): void
     {
         $run = self::beacon(1000);
@@ -92,5 +102,26 @@ final class ScanRunsTest extends TestCase
         $em->method('getRepository')->willReturn($repository);
 
         $this->assertSame($runs, ScanRuns::recent($em, 5));
+    }
+
+    public function testSweepFailsOnlyStaleRunningCrawls(): void
+    {
+        $stale = (new ScanRun())->start(ScanRun::CRAWL, 1000);
+        $fresh = (new ScanRun())->start(ScanRun::CRAWL, 2000);
+        $em = $this->emWith([$stale, $fresh]);
+        $em->expects($this->once())->method('flush');
+
+        $this->assertSame(1, ScanRuns::sweepStaleCrawls($em, 1000 + ScanRuns::CRAWL_STALE_SECONDS + 1));
+        $this->assertSame(ScanRun::FAILED, $stale->getStatus());
+        $this->assertSame(ScanRun::RUNNING, $fresh->getStatus());
+    }
+
+    public function testCrawlIsRunningOnlyForANonStaleRunningCrawl(): void
+    {
+        $run = (new ScanRun())->start(ScanRun::CRAWL, 1000);
+
+        $this->assertTrue(ScanRuns::crawlIsRunning($this->emWith([$run]), 1000 + ScanRuns::CRAWL_STALE_SECONDS));
+        $this->assertFalse(ScanRuns::crawlIsRunning($this->emWith([$run]), 1000 + ScanRuns::CRAWL_STALE_SECONDS + 1));
+        $this->assertFalse(ScanRuns::crawlIsRunning($this->emWith([]), 1000));
     }
 }

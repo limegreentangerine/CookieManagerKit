@@ -48,6 +48,11 @@ final class CrawlRunnerTest extends TestCase
             {
                 return $this->pages;
             }
+
+            public function dropped(): int
+            {
+                return 0;
+            }
         };
         $scanner = new class($result) implements Scanner {
             public ?ScanContext $context = null;
@@ -66,7 +71,7 @@ final class CrawlRunnerTest extends TestCase
             }
         };
         return new CrawlRunner(
-            $em ?? $this->createMock(EntityManagerInterface::class),
+            $em ?? EmFactory::make($this),
             $settings ?? new Settings(),
             $urls,
             $scanner,
@@ -84,7 +89,7 @@ final class CrawlRunnerTest extends TestCase
      */
     private function emAssigningIds(): EntityManagerInterface&\PHPUnit\Framework\MockObject\MockObject
     {
-        $em = $this->createMock(EntityManagerInterface::class);
+        $em = EmFactory::make($this);
         $em->method('persist')->willReturnCallback(static function (object $entity): void {
             (new \ReflectionProperty($entity, 'id'))->setValue($entity, 1);
         });
@@ -126,6 +131,16 @@ final class CrawlRunnerTest extends TestCase
         return new Finding('cookie', $name, 'e.com', 'https://e.com/');
     }
 
+    private function emWithRuns(array $runs): EntityManagerInterface&\PHPUnit\Framework\MockObject\MockObject
+    {
+        $repository = $this->createMock(\Doctrine\Persistence\ObjectRepository::class);
+        $repository->method('findBy')->willReturn($runs);
+        $em = $this->createMock(EntityManagerInterface::class);
+        $em->method('getRepository')->willReturn($repository);
+
+        return $em;
+    }
+
     public function testACompleteCrawlStoresFindingsCompletesTheRunAndAlerts(): void
     {
         $run = $this->runner(['https://e.com/'], new ScanResult([self::cookie('a')], 1, 0))->run();
@@ -164,13 +179,13 @@ final class CrawlRunnerTest extends TestCase
 
     public function testOffHostUrlsFromThePageSourceAreNeverHandedToTheScanner(): void
     {
-        $runner = $this->runner(['https://e.com/a', 'https://evil.example.net/x', 'http://', 'https://E.COM./b'], new ScanResult([], 2, 0));
+        $runner = $this->runner(['https://e.com/a', 'https://evil.example.net/x', 'http://', 'https://user:pw@E.COM./b#frag', 'ftp://e.com/c'], new ScanResult([], 2, 0));
 
         $runner->run();
 
         $context = (new \ReflectionProperty($runner, 'scanner'))->getValue($runner)->context;
 
-        $this->assertSame(['https://e.com/a', 'https://E.COM./b'], $context->urls);
+        $this->assertSame(['https://e.com/a', 'https://e.com/b'], $context->urls);
     }
 
     public function testACompleteUntruncatedUnexcludedCrawlMarksVanishedFindingsGone(): void
@@ -274,7 +289,7 @@ final class CrawlRunnerTest extends TestCase
     {
         $store = self::failingStore('closed');
         $persisted = [];
-        $em = $this->createMock(EntityManagerInterface::class);
+        $em = EmFactory::make($this);
         $em->method('persist')->willReturnCallback(static function (object $entity) use (&$persisted): void {
             $persisted[] = $entity;
         });
@@ -292,7 +307,7 @@ final class CrawlRunnerTest extends TestCase
 
     public function testAFailureToRecordTheResultIsAFixedMessageToo(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
+        $em = EmFactory::make($this);
         $calls = 0;
         $em->method('flush')->willReturnCallback(static function () use (&$calls): void {
             if (++$calls === 2) {
@@ -309,7 +324,7 @@ final class CrawlRunnerTest extends TestCase
     public function testRecordFailureStoresAFailedCrawlRunAndNeverThrows(): void
     {
         $persisted = [];
-        $em = $this->createMock(EntityManagerInterface::class);
+        $em = EmFactory::make($this);
         $em->method('persist')->willReturnCallback(static function (object $entity) use (&$persisted): void {
             $persisted[] = $entity;
         });
@@ -321,6 +336,95 @@ final class CrawlRunnerTest extends TestCase
         $this->assertSame(ScanRun::CRAWL, $run->getSource());
         $this->assertSame(500, $run->getFinishedAt());
         $this->assertSame([$run], $persisted);
+    }
+
+    public function testAFreshRunningCrawlBlocksASecondOne(): void
+    {
+        $running = (new ScanRun())->start(ScanRun::CRAWL, 1000000 - 60);
+        $em = $this->emWithRuns([$running]);
+        $em->expects($this->never())->method('persist');
+        $runner = $this->runner(['https://e.com/'], new ScanResult([self::cookie('a')], 1, 0), null, 999990, $em);
+
+        try {
+            $runner->run();
+            $this->fail('a second crawl started');
+        } catch (\CookieManagerKit\Scan\CrawlAlreadyRunning $e) {
+            $this->assertSame(CrawlRunner::ALREADY_RUNNING, $e->getMessage());
+        }
+
+        $this->assertSame([], $this->store->findings);
+    }
+
+    public function testAStaleRunningCrawlIsSweptAndANewCrawlStarts(): void
+    {
+        $stale = (new ScanRun())->start(ScanRun::CRAWL, 1000000 - 541);
+        $em = $this->emWithRuns([$stale]);
+
+        $run = $this->runner(['https://e.com/'], new ScanResult([self::cookie('a')], 1, 0), null, 999990, $em)->run();
+
+        $this->assertSame(ScanRun::FAILED, $stale->getStatus());
+        $this->assertSame(ScanRun::COMPLETE, $run->getStatus());
+    }
+
+    public function testARunningBeaconRunDoesNotBlockOrGetSwept(): void
+    {
+        $beacon = (new ScanRun())->start(ScanRun::BEACON, 1000000 - 5000);
+        $repository = $this->createMock(\Doctrine\Persistence\ObjectRepository::class);
+        $repository->method('findBy')->willReturnCallback(static fn(array $criteria): array => ($criteria['source'] ?? '') === ScanRun::BEACON ? [$beacon] : []);
+        $em = $this->createMock(EntityManagerInterface::class);
+        $em->method('getRepository')->willReturn($repository);
+
+        $run = $this->runner(['https://e.com/'], new ScanResult([], 1, 0), null, 999990, $em)->run();
+
+        $this->assertSame(ScanRun::RUNNING, $beacon->getStatus());
+        $this->assertSame(ScanRun::COMPLETE, $run->getStatus());
+    }
+
+    public function testTheRunRecordsWhetherItSawEverything(): void
+    {
+        $full = $this->runner(['https://e.com/'], new ScanResult([], 1, 0))->run();
+        $partial = $this->runner(['https://e.com/', 'https://e.com/b'], new ScanResult([], 1, 1))->run();
+
+        $this->assertTrue($full->sawEverything());
+        $this->assertFalse($partial->sawEverything());
+    }
+
+    public function testAPageSourceThatDroppedPagesMeansNothingIsMarkedGone(): void
+    {
+        $this->store->add((new ScanFinding())->identify('cookie', 'old', 'e.com')->addSource('crawl'));
+        $source = new class implements UrlSource {
+            public function all(): array
+            {
+                return ['https://e.com/'];
+            }
+
+            public function dropped(): int
+            {
+                return 1;
+            }
+        };
+        $runner = new CrawlRunner(
+            EmFactory::make($this),
+            new Settings(),
+            $source,
+            new class implements Scanner {
+                public function scan(ScanContext $context): ScanResult
+                {
+                    return new ScanResult([], 1, 0);
+                }
+            },
+            new FindingIngestor($this->store, new Classifier([], static fn(string $name): bool => false)),
+            $this->alerts,
+            'e.com',
+            static fn(): ?int => null,
+            static fn(): int => 1000000,
+            static fn(): int => 0,
+        );
+
+        $run = $runner->run();
+
+        $this->assertNotSame(ScanFinding::GONE, $this->found('cookie', 'old', 'e.com')->getStatus());
+        $this->assertFalse($run->sawEverything());
     }
 
     protected function setUp(): void

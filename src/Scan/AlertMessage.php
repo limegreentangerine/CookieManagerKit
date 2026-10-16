@@ -34,7 +34,7 @@ final class AlertMessage
         $subject = 'Cookie scan: ' . $summary->new . ' new, ' . $summary->changed . ' changed on ' . $host;
 
         $lines = [
-            'A scheduled scan of ' . $host . ' found changes.',
+            'A scan of ' . $host . ' found changes.',
             '',
             $summary->new . ' new, ' . $summary->changed . ' changed.',
             $summary->unclassified . ' findings still need a category.',

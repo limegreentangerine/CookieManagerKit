@@ -62,6 +62,11 @@ class ScanRun extends BaseEntity
      */
     protected $unclassifiedCount = 0;
 
+    /**
+     * @ORM\Column(type="boolean", nullable=false, options={"default": false, "comment": "A crawl that saw every page, so unseen findings could go gone"})
+     */
+    protected $sawEverything = false;
+
     public function start(string $source, int $now): self
     {
         $this->source = in_array($source, [self::CRAWL, self::BEACON], true) ? $source : self::CRAWL;
@@ -76,6 +81,18 @@ class ScanRun extends BaseEntity
     {
         $this->status = in_array($status, [self::COMPLETE, self::FAILED], true) ? $status : self::FAILED;
         $this->finishedAt = $now;
+
+        return $this;
+    }
+
+    public function sawEverything(): bool
+    {
+        return (bool) $this->sawEverything;
+    }
+
+    public function setSawEverything(bool $sawEverything): self
+    {
+        $this->sawEverything = $sawEverything;
 
         return $this;
     }
