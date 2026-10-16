@@ -101,4 +101,23 @@ final class ScanRuns
     {
         return array_values($em->getRepository(ScanRun::class)->findBy([], ['id' => 'DESC'], $limit));
     }
+
+    /**
+     * Ends every running scan-mode session now (the admin pressed Stop, or started a new session).
+     */
+    public static function endRunning(EntityManagerInterface $em, int $now): int
+    {
+        $ended = 0;
+
+        foreach ($em->getRepository(ScanRun::class)->findBy(['source' => ScanRun::BEACON, 'status' => ScanRun::RUNNING]) as $run) {
+            $run->finish(ScanRun::COMPLETE, $now);
+            $ended++;
+        }
+
+        if ($ended > 0) {
+            $em->flush();
+        }
+
+        return $ended;
+    }
 }
