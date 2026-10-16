@@ -6,13 +6,13 @@ final readonly class ScanResult
 {
     /**
      * @param list<Finding> $findings
-     * @param bool          $complete true only when every page of the site's full list was fetched and answered 2xx
+     * @param bool          $complete false when the scanner knows it did not see everything (nothing scanned, time budget exhausted)
      */
     public function __construct(
         public array $findings,
         public int $pagesScanned,
         public int $pagesFailed,
-        public bool $complete,
+        public bool $complete = true,
     ) {}
 
     /**
@@ -21,6 +21,6 @@ final readonly class ScanResult
      */
     public function isComplete(): bool
     {
-        return $this->complete;
+        return $this->pagesFailed === 0 && $this->complete;
     }
 }

@@ -5,8 +5,9 @@ namespace CookieManagerKit\Scan;
 /**
  * Fetches each page as an anonymous visitor and reads it; it runs no JavaScript. A page that redirects, errors, times
  * out or is refused counts as failed, and so does every page left when the time budget runs out, because a crawl
- * that did not see everything must not conclude anything has disappeared. A truncated page list, or a crawl that
- * scanned nothing, is likewise reported incomplete.
+ * that did not see everything must not conclude anything has disappeared. A crawl that scanned nothing is likewise
+ * reported incomplete. The budget is a soft limit: it is checked before each fetch, so one slow fetch can overrun it.
+ * Findings carry only the page's path as their label, never its query string.
  */
 final class CrawlScanner implements Scanner
 {
@@ -24,10 +25,12 @@ final class CrawlScanner implements Scanner
         $scanned = 0;
         $failed = 0;
         $total = count($context->urls);
+        $budgetHit = false;
 
         foreach (array_values($context->urls) as $index => $url) {
             if ($clock() - $started >= $this->budgetSeconds) {
                 $failed += $total - $index;
+                $budgetHit = true;
 
                 break;
             }
@@ -40,6 +43,7 @@ final class CrawlScanner implements Scanner
                 continue;
             }
 
+            $label = (string) (parse_url($url, PHP_URL_PATH) ?: '/');
             $ok = $response->status >= 200 && $response->status < 300;
 
             if ($ok) {
@@ -48,10 +52,10 @@ final class CrawlScanner implements Scanner
                 $failed++;
             }
 
-            $items = CookieHeader::findings($response->cookies(), $context->siteHost, $url);
+            $items = CookieHeader::findings($response->cookies(), $context->siteHost, $label);
 
             if ($ok && $response->isHtml()) {
-                $items = [...$items, ...PageParser::findings($response->body, $url, $context->siteHost)];
+                $items = [...$items, ...PageParser::findings($response->body, $label, $context->siteHost)];
             }
 
             foreach ($items as $item) {
@@ -59,7 +63,7 @@ final class CrawlScanner implements Scanner
             }
         }
 
-        $complete = $failed === 0 && $scanned > 0 && !$context->truncated;
+        $complete = $scanned > 0 && !$budgetHit;
 
         return new ScanResult(array_values($found), $scanned, $failed, $complete);
     }

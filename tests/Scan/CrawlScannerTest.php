@@ -7,6 +7,7 @@ namespace CookieManagerKit\Tests\Scan;
 use PHPUnit\Framework\TestCase;
 use CookieManagerKit\Scan\Finding;
 use CookieManagerKit\Scan\UnsafeUrl;
+use CookieManagerKit\Scan\ScanResult;
 use CookieManagerKit\Scan\FetchFailed;
 use CookieManagerKit\Scan\FetchResult;
 use CookieManagerKit\Scan\ScanContext;
@@ -55,7 +56,7 @@ final class CrawlScannerTest extends TestCase
         $result = (new CrawlScanner($fetcher))->scan(new ScanContext('e.com', ['https://e.com/a', 'https://e.com/b']));
 
         $this->assertCount(1, $result->findings);
-        $this->assertSame('https://e.com/a', $result->findings[0]->page);
+        $this->assertSame('/a', $result->findings[0]->page);
     }
 
     public function testRedirectsErrorsAndTransportFailuresMakeTheCrawlIncomplete(): void
@@ -144,15 +145,24 @@ final class CrawlScannerTest extends TestCase
         $this->assertSame(128, strlen($result->findings[1]->name));
     }
 
-    public function testATruncatedPageListMakesTheCrawlIncomplete(): void
+    public function testFindingsCarryThePathNotTheQueryString(): void
     {
-        $fetcher = new FakeFetcher(['https://e.com/' => FakeFetcher::page('<p>x</p>')]);
+        $fetcher = new FakeFetcher(['https://e.com/p?token=abc' => FakeFetcher::page('<script src="https://cdn.example.net/a.js"></script>', ['set-cookie' => ['sid=1']])]);
 
-        $result = (new CrawlScanner($fetcher))->scan(new ScanContext('e.com', ['https://e.com/'], true));
+        $result = (new CrawlScanner($fetcher))->scan(new ScanContext('e.com', ['https://e.com/p?token=abc']));
 
-        $this->assertSame(0, $result->pagesFailed);
-        $this->assertFalse($result->complete);
-        $this->assertFalse($result->isComplete());
+        $this->assertCount(2, $result->findings);
+
+        foreach ($result->findings as $finding) {
+            $this->assertSame('/p', $finding->page);
+        }
+    }
+
+    public function testBudgetExhaustionIsIncompleteEvenIfNoPageFailedBeforeIt(): void
+    {
+        $this->assertTrue((new ScanResult([], 1, 0))->isComplete());
+        $this->assertFalse((new ScanResult([], 1, 1))->isComplete());
+        $this->assertFalse((new ScanResult([], 1, 0, false))->isComplete());
     }
 
     public function testACrawlThatScannedNothingIsNotComplete(): void

@@ -68,4 +68,38 @@ final class UrlSelectorTest extends TestCase
     {
         $this->assertSame(['https://e.com/ok'], UrlSelector::select(['https://', 'https://e.com/ok', ''], [], 10)['urls']);
     }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function bypassPaths(): array
+    {
+        $paths = ['/Members', '/MEMBERS/p', '/%6Dembers', '//members', '/./members', '/a/../members', '/members;x', '/members/', '/members?x=1'];
+
+        return array_combine($paths, array_map(static fn(string $p): array => [$p], $paths));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('bypassPaths')]
+    public function testEquivalentSpellingsOfAnExcludedPathAreExcluded(string $path): void
+    {
+        $picked = UrlSelector::select(['https://e.com' . $path], ['/members'], 10);
+
+        $this->assertSame([], $picked['urls']);
+        $this->assertSame(1, $picked['excluded']);
+    }
+
+    public function testNonAsciiPatternMatchesPercentEncodedPath(): void
+    {
+        $this->assertSame([], UrlSelector::select(['https://e.com/caf%C3%A9/x'], ['/café'], 10)['urls']);
+    }
+
+    public function testFragmentsAreStrippedBeforeDedupe(): void
+    {
+        $this->assertSame(['https://e.com/ok'], UrlSelector::select(['https://e.com/ok#f', 'https://e.com/ok'], [], 10)['urls']);
+    }
+
+    public function testAnExcludedUrlIsCountedOnce(): void
+    {
+        $this->assertSame(1, UrlSelector::select(['https://e.com/members', 'https://e.com/members'], ['/members'], 10)['excluded']);
+    }
 }

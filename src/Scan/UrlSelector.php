@@ -24,7 +24,11 @@ final class UrlSelector
      */
     private static function isExcluded(string $path, array $excludes): bool
     {
-        foreach ($excludes as $pattern) {
+        $path = self::normalise($path);
+
+        foreach ($excludes as $raw) {
+            $pattern = self::normalise((string) $raw, true);
+
             if (str_contains($pattern, '*')) {
                 if (fnmatch($pattern, $path)) {
                     return true;
@@ -36,6 +40,35 @@ final class UrlSelector
 
         return false;
     }
+
+    /**
+     * Brings a path (or pattern) to one canonical form so an encoded, re-cased or dotted spelling cannot slip past an
+     * exclude: percent-decoded, lower-cased, ;params and query stripped, // collapsed, . and .. resolved, no trailing slash.
+     */
+    private static function normalise(string $path, bool $keepWildcard = false): string
+    {
+        $path = rawurldecode(explode('?', $path, 2)[0]);
+        $path = mb_strtolower($path, 'UTF-8');
+        $out = [];
+
+        foreach (explode('/', $path) as $segment) {
+            $segment = explode(';', $segment, 2)[0];
+
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+
+            if ($segment === '..') {
+                array_pop($out);
+
+                continue;
+            }
+
+            $out[] = $segment;
+        }
+
+        return '/' . implode('/', $out);
+    }
     /**
      * @param list<string> $urls
      * @param list<string> $excludes
@@ -46,17 +79,21 @@ final class UrlSelector
     {
         $kept = [];
         $excluded = 0;
+        $dropped = [];
 
         foreach ($urls as $url) {
             $url = (string) $url;
+            $hash = strpos($url, '#');
+            $url = $hash === false ? $url : substr($url, 0, $hash);
             $path = self::path($url);
 
-            if ($path === null || isset($kept[$url])) {
+            if ($path === null || isset($kept[$url]) || isset($dropped[$url])) {
                 continue;
             }
 
             if (self::isExcluded($path, $excludes)) {
                 $excluded++;
+                $dropped[$url] = true;
 
                 continue;
             }
