@@ -7,6 +7,7 @@ use CookieManagerKit\Support\Output as O;
 /** @var string $defaultLocale */
 /** @var array<string, CookieManagerKit\Entity\BannerContent> $contents */
 /** @var CookieManagerKit\Entity\Settings $settings */
+/** @var list<CookieManagerKit\Entity\PolicyVersionChange> $history */
 
 $pageSelector = app('helper/form/page_selector');
 $defaults = Catalog::DEFAULTS;
@@ -100,6 +101,26 @@ foreach ($locales as $locale => $label) {
             <label class="form-check-label" for="askAgain"><?php echo t('Ask every visitor again') ?></label>
             <div class="help-block form-text"><?php echo O::e(t('Tick this when your cookie policy changes. Current policy version: %s.', $settings->getPolicyVersion())) ?></div>
         </div>
+        <div class="form-group mb-3">
+            <label class="form-label" for="askAgainReason"><?php echo t('Why are visitors being asked again?') ?></label>
+            <input type="text" class="form-control" maxlength="500" id="askAgainReason" name="askAgainReason" value="">
+            <div class="help-block form-text"><?php echo t('Required when the box above is ticked. Kept in the consent log and its export.') ?></div>
+        </div>
+
+        <?php if ($history !== []) { ?>
+            <table class="table table-sm">
+                <thead><tr><th><?php echo t('Version') ?></th><th><?php echo t('Date (UTC)') ?></th><th><?php echo t('Reason') ?></th></tr></thead>
+                <tbody>
+                <?php foreach ($history as $change) { ?>
+                    <tr>
+                        <td><?php echo O::e($change->getVersion()) ?></td>
+                        <td><?php echo O::e(gmdate('Y-m-d H:i', $change->getCreatedAt())) ?></td>
+                        <td><?php echo O::e($change->getReason()) ?></td>
+                    </tr>
+                <?php } ?>
+                </tbody>
+            </table>
+        <?php } ?>
     </fieldset>
 
     <div class="ccm-dashboard-form-actions-wrapper">

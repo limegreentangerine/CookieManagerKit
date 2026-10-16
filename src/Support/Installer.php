@@ -3,7 +3,7 @@
 namespace CookieManagerKit\Support;
 
 use Doctrine\ORM\EntityManagerInterface;
-use CookieManagerKit\Entity\{BannerContent, Category, Settings};
+use CookieManagerKit\Entity\{BannerContent, Category, PolicyVersionChange, Settings};
 
 /**
  * Default data created on install and upgrade. Idempotent: it only ever adds what is missing and never overwrites
@@ -11,6 +11,8 @@ use CookieManagerKit\Entity\{BannerContent, Category, Settings};
  */
 final class Installer
 {
+    public const INITIAL_REASON = 'Initial version';
+
     public const CATEGORIES = [
         [
             'handle' => 'necessary',
@@ -65,6 +67,18 @@ final class Installer
     {
         if ($em->getRepository(Settings::class)->findOneBy([]) === null) {
             $em->persist(new Settings());
+        }
+
+        // Settings::get() reads the row, so it has to be written before the first history row can name its version.
+        $em->flush();
+
+        if ($em->getRepository(PolicyVersionChange::class)->findOneBy([]) === null) {
+            $em->persist(
+                (new PolicyVersionChange())
+                    ->setVersion(Settings::get()->getPolicyVersion())
+                    ->setReason(self::INITIAL_REASON)
+                    ->setCreatedAt(time()),
+            );
         }
 
         $existing = [];

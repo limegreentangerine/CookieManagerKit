@@ -70,4 +70,9 @@ final class InstallerTest extends TestCase
     {
         $this->assertSame([], $this->missing(['necessary', 'preferences', 'analytics', 'marketing']));
     }
+
+    public function testSeedRecordsTheInitialPolicyVersionOnce(): void
+    {
+        $this->assertSame('Initial version', Installer::INITIAL_REASON);
+    }
 }

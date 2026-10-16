@@ -3,9 +3,10 @@
 namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\CookieManager;
 
 use Concrete\Core\Page\Page;
+use Doctrine\DBAL\Exception\TableNotFoundException;
 use CookieManagerKit\Entity\{BannerContent, Settings};
 use Concrete\Core\Page\Controller\DashboardPageController;
-use CookieManagerKit\Support\{Catalog, SiteLocales, StyleRules, Text};
+use CookieManagerKit\Support\{Catalog, ErrorLog, PolicyVersions, SiteLocales, StyleRules, Text};
 
 class Banner extends DashboardPageController
 {
@@ -44,6 +45,18 @@ class Banner extends DashboardPageController
         $this->set('defaultLocale', SiteLocales::defaultLocale());
         $this->set('contents', $contents);
         $this->set('settings', Settings::get());
+
+        try {
+            $history = PolicyVersions::history($this->entityManager);
+        } catch (TableNotFoundException) {
+            // The table arrives with the package update; until then there is no history to show.
+            $history = [];
+        } catch (\Throwable $e) {
+            ErrorLog::record($e);
+            $history = [];
+        }
+
+        $this->set('history', $history);
     }
 
     public function save()
@@ -124,7 +137,13 @@ class Banner extends DashboardPageController
         $settings->setLifetimeDays($lifetime)->setWidgetEnabled($this->post('widgetEnabled') !== null);
 
         if ($this->post('askAgain') !== null) {
-            $settings->bumpPolicyVersion();
+            try {
+                PolicyVersions::bump($this->entityManager, $settings, Text::plain($this->post('askAgainReason'), 500), (int) (new \Concrete\Core\User\User())->getUserID());
+            } catch (\InvalidArgumentException) {
+                $this->flash('error', t('Say why visitors are being asked again, so the log can explain it.'));
+
+                return $this->buildRedirect(self::URL)->send();
+            }
         }
 
         $this->entityManager->persist($settings);
