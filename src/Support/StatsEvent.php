@@ -9,9 +9,9 @@ namespace CookieManagerKit\Support;
  */
 final class StatsEvent
 {
+    private const MAX_POLICY_VERSION = 1000000;
     public const EVENTS = ['shown', 'accept_all', 'reject_all', 'custom', 'changed'];
     public const MAX_BYTES = 512;
-    private const MAX_POLICY_VERSION = 1000000;
 
     /**
      * @return array{v: int, e: string, l: string}|null

@@ -23,10 +23,18 @@ live site.
 - A first-party consent cookie.
 - A floating settings button, and `data-cmk-open` to reopen the settings from any element.
 - Banner styling with a live preview (Appearance page).
+- Anonymous banner statistics (Statistics page, see below).
 
 Not built yet (later phases): cookie scanner, consent audit log, regional rules and GPC,
 policy re-consent flow beyond the "Ask every visitor again" checkbox, Google Consent Mode,
-declaration block, embed placeholders, translation assist, analytics and reports.
+declaration block, embed placeholders, translation assist, A/B testing, and report export
+and sharing.
+
+## Statistics
+
+`Dashboard > Cookie Manager > Statistics` shows how visitors respond to the banner for a date range: banner displays, accept all, custom and reject all (with counts and shares), the response rate, and how many people changed their choice later, by day, language and policy version.
+
+Counting is anonymous. Each event adds one to a daily counter (`cmkStats`); no cookie, IP address, user agent or visitor identifier is stored. A banner display is counted once per browser tab session per policy version, and the days are UTC. Crawlers and headless browsers are not counted. Mention it in your own privacy notice if you describe your cookie tooling.
 
 ## Blocking a script
 
