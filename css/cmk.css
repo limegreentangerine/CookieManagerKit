@@ -83,7 +83,7 @@
 	margin: 0 0 8px;
 	font-size: 1.2em;
 	line-height: 1.3;
-	color: inherit;
+	color: inherit !important;
 }
 
 .cmk__title:focus {
@@ -91,6 +91,7 @@
 }
 
 .cmk__body {
+	color: inherit !important;
 	margin: 0 0 8px;
 }
 
