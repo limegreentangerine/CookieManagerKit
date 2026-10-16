@@ -7,7 +7,6 @@
 (function (w, d) {
 	'use strict';
 
-	var MARKER = 'cmk_scan=1';
 	var MAX_ITEMS = 100;
 	var MAX_NAME = 128;
 	var MAX_PATH = 512;
@@ -16,15 +15,25 @@
 	var MAX_FAILURES = 3;
 	var SETTLE_MS = 2500;
 
-	if (d.cookie.indexOf(MARKER) === -1) {
+	function markerSet() {
+		return /(^|;\s*)cmk_scan=1(;|$)/.test(d.cookie);
+	}
+
+	if (!markerSet() || w.__cmkBeacon) {
 		return;
 	}
+
+	w.__cmkBeacon = true;
 
 	var endpoint;
 
 	try {
 		var current = d.currentScript;
 		endpoint = new URL('report', current && current.src ? current.src : w.location.href).href;
+
+		if (new URL(endpoint).origin !== w.location.origin) {
+			return;
+		}
 	} catch (error) {
 		return;
 	}
@@ -33,22 +42,46 @@
 	var failures = 0;
 	var stopped = false;
 
-	function unique(list) {
-		return list.filter(function (item, index) {
-			return item !== '' && list.indexOf(item) === index;
-		});
+	// Lone surrogates would not survive a strict JSON decode on the server, so they are dropped.
+	function wellFormed(text) {
+		var out = '';
+
+		for (var i = 0; i < text.length; i++) {
+			var code = text.charCodeAt(i);
+
+			if (code >= 0xd800 && code <= 0xdbff) {
+				var next = text.charCodeAt(i + 1);
+
+				if (next >= 0xdc00 && next <= 0xdfff) {
+					out += text.charAt(i) + text.charAt(i + 1);
+					i++;
+				}
+			} else if (code < 0xdc00 || code > 0xdfff) {
+				out += text.charAt(i);
+			}
+		}
+
+		return out;
 	}
 
 	function clip(name) {
-		var text = String(name).slice(0, MAX_NAME);
-		var last = text.charCodeAt(text.length - 1);
-
-		// never end on half of a surrogate pair
-		return last >= 0xd800 && last <= 0xdbff ? text.slice(0, -1) : text;
+		return wellFormed(wellFormed(String(name)).slice(0, MAX_NAME));
 	}
 
 	function cap(list) {
-		return unique(list.map(clip)).slice(0, MAX_ITEMS);
+		var seen = new Set();
+		var out = [];
+
+		for (var i = 0; i < list.length && out.length < MAX_ITEMS; i++) {
+			var name = clip(list[i]);
+
+			if (name !== '' && !seen.has(name)) {
+				seen.add(name);
+				out.push(name);
+			}
+		}
+
+		return out;
 	}
 
 	function utf8Length(text) {
@@ -73,9 +106,18 @@
 	}
 
 	function cookieNames() {
-		return d.cookie.split(';').map(function (part) {
-			return part.split('=')[0].trim();
+		var names = [];
+
+		d.cookie.split(';').forEach(function (part) {
+			var at = part.indexOf('=');
+
+			// a part without "=" is a nameless cookie whose text is its value, which must never be reported
+			if (at > 0) {
+				names.push(part.slice(0, at).trim());
+			}
 		});
+
+		return names;
 	}
 
 	function storageKeys(read) {
@@ -136,7 +178,9 @@
 				)
 			),
 			h: cap(resourceHosts()),
-			p: String(w.location.pathname || '/').slice(0, MAX_PATH)
+			p: String(w.location.pathname || '/')
+				.replace(/^\/+/, '/')
+				.slice(0, MAX_PATH)
 		};
 		var body = JSON.stringify(report);
 
@@ -147,6 +191,7 @@
 
 			if (report[key].length === 0) {
 				report.p = '/';
+				body = JSON.stringify(report);
 				break;
 			}
 
@@ -175,7 +220,7 @@
 			return;
 		}
 
-		if (d.cookie.indexOf(MARKER) === -1) {
+		if (!markerSet()) {
 			stopped = true;
 			return;
 		}

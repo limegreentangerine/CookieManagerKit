@@ -7,6 +7,17 @@
 	'use strict';
 
 	var boot = w.cmkBoot || {};
+	var ownNonce = '';
+
+	try {
+		/* Must be read now: currentScript is only set while this tag runs. */
+		ownNonce =
+			(d.currentScript && (d.currentScript.nonce || d.currentScript.getAttribute('nonce'))) ||
+			'';
+	} catch (e) {
+		ownNonce = '';
+	}
+
 	var HEX = /^#[0-9a-fA-F]{6}$/;
 	var HANDLE = /^[a-z0-9_-]{1,32}$/;
 	var POSITIONS = ['bottom-left', 'bottom-right', 'bottom-bar', 'center-modal'];
@@ -575,14 +586,30 @@
 		state.started = false;
 	};
 
+	function sameOriginPath(url) {
+		if (
+			typeof url !== 'string' ||
+			url.charAt(0) !== '/' ||
+			url.charAt(1) === '/' ||
+			/[\\\u0000-\u001f\u007f]/.test(url)
+		) {
+			return false;
+		}
+
+		try {
+			return new URL(url, w.location.origin).origin === w.location.origin;
+		} catch (error) {
+			return false;
+		}
+	}
+
 	runtime.startBeacon = function () {
 		var url = boot.scan;
 
 		// Only a same-origin path is ever loaded; the marker cookie exists only in an admin's browser in scan mode.
 		if (
-			typeof url !== 'string' ||
-			!/^\/(?!\/)/.test(url) ||
-			d.cookie.indexOf('cmk_scan=1') === -1 ||
+			!sameOriginPath(url) ||
+			!/(^|;\s*)cmk_scan=1(;|$)/.test(d.cookie) ||
 			d.querySelector('script[data-cmk-beacon]')
 		) {
 			return;
@@ -593,6 +620,12 @@
 		script.src = url;
 		script.async = true;
 		script.setAttribute('data-cmk-beacon', '');
+
+		if (ownNonce) {
+			script.nonce = ownNonce;
+			script.setAttribute('nonce', ownNonce);
+		}
+
 		(d.head || d.documentElement).appendChild(script);
 	};
 

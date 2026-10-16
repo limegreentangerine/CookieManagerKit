@@ -819,7 +819,7 @@ describe('starting the scan-mode beacon', () => {
 		expect(beaconScripts()).toHaveLength(0);
 	});
 
-	it.each(['https://evil.example.net/x.js', '//evil.example.net/x.js', 'javascript:alert(1)', 'beacon.js'])('refuses a beacon URL that is not a same-origin path: %s', (url) => {
+	it.each(['https://evil.example.net/x.js', '//evil.example.net/x.js', 'javascript:alert(1)', 'beacon.js', '/\\evil.example.net/x.js', '/\t/evil.example.net/x.js', '/\n/evil.example.net/x.js'])('refuses a beacon URL that is not a same-origin path: %s', (url) => {
 		document.cookie = 'cmk_scan=1; Path=/';
 		mount(config(), { ...BOOT, scan: url });
 		window.cmkRuntime.startBeacon();
@@ -834,5 +834,38 @@ describe('starting the scan-mode beacon', () => {
 		window.cmkRuntime.startBeacon();
 
 		expect(beaconScripts()).toHaveLength(1);
+	});
+
+	it('does not treat a look-alike cookie as the marker', () => {
+		document.cookie = 'xcmk_scan=1; Path=/';
+		mount(config(), SCAN_BOOT);
+		window.cmkRuntime.startBeacon();
+		document.cookie = 'xcmk_scan=; Path=/; Max-Age=0';
+
+		expect(beaconScripts()).toHaveLength(0);
+	});
+
+	it('gives the script the runtime nonce when there is one', () => {
+		document.cookie = 'cmk_scan=1; Path=/';
+		Object.defineProperty(document, 'currentScript', { configurable: true, get: () => ({ nonce: 'abc123', getAttribute: () => 'abc123' }) });
+
+		try {
+			mount(config(), SCAN_BOOT);
+		} finally {
+			delete document.currentScript;
+		}
+
+		window.cmkRuntime.startBeacon();
+
+		expect(beaconScripts()[0].nonce).toBe('abc123');
+		expect(beaconScripts()[0].getAttribute('nonce')).toBe('abc123');
+	});
+
+	it('sets no nonce when there is none', () => {
+		document.cookie = 'cmk_scan=1; Path=/';
+		mount(config(), SCAN_BOOT);
+		window.cmkRuntime.startBeacon();
+
+		expect(beaconScripts()[0].hasAttribute('nonce')).toBe(false);
 	});
 });

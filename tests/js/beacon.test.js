@@ -27,6 +27,7 @@ const flush = async () => {
 let pagehide = [];
 
 beforeEach(() => {
+	delete window.__cmkBeacon;
 	pagehide = [];
 	const add = window.addEventListener.bind(window);
 	vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
@@ -155,6 +156,7 @@ describe('the scan-mode beacon', () => {
 	it('trims deterministically', () => {
 		const run = () => {
 			window.fetch.mockClear();
+			delete window.__cmkBeacon;
 			localStorage.clear();
 			for (let i = 0; i < 100; i++) localStorage.setItem(String(i).padStart(3, '0') + '€'.repeat(125), 'v');
 			loadScript('cmk-beacon.js');
@@ -287,5 +289,76 @@ describe('the scan-mode beacon', () => {
 		vi.advanceTimersByTime(3000);
 
 		expect(sent().c).toContain('cmk_scan');
+	});
+
+	it('skips nameless cookies so their text is never reported as a name', () => {
+		scanMode();
+		document.cookie = '=NAMELESS-VALUE; Path=/';
+		document.cookie = 'plain-nameless-value; Path=/';
+
+		loadScript('cmk-beacon.js');
+		vi.advanceTimersByTime(3000);
+
+		const body = window.fetch.mock.calls[0][1].body;
+
+		expect(body).not.toContain('NAMELESS-VALUE');
+		expect(body).not.toContain('plain-nameless-value');
+	});
+
+	it('matches the marker exactly', () => {
+		document.cookie = 'xcmk_scan=1; Path=/';
+		loadScript('cmk-beacon.js');
+		vi.advanceTimersByTime(5000);
+
+		expect(window.fetch).not.toHaveBeenCalled();
+	});
+
+	it('removes lone surrogates so the JSON stays valid', () => {
+		scanMode();
+		localStorage.setItem('a\ud800b', 'v');
+		localStorage.setItem('c\udc00d', 'v');
+		localStorage.setItem('ok\u{1F36A}', 'v');
+
+		loadScript('cmk-beacon.js');
+		vi.advanceTimersByTime(3000);
+
+		const body = window.fetch.mock.calls[0][1].body;
+
+		expect(body).not.toMatch(/\ud[89a-f][0-9a-f]{2}/i);
+		expect(sent().s).toEqual(expect.arrayContaining(['ab', 'cd', 'ok\u{1F36A}']));
+	});
+
+	it('collapses leading slashes in the path', () => {
+		scanMode();
+		window.history.replaceState(null, '', window.location.origin + '//x/y');
+		loadScript('cmk-beacon.js');
+		vi.advanceTimersByTime(3000);
+		const report = sent();
+		window.history.replaceState(null, '', '/');
+
+		expect(report.p).toBe('/x/y');
+	});
+
+	it('only loads once per page', () => {
+		scanMode();
+		loadScript('cmk-beacon.js');
+		loadScript('cmk-beacon.js');
+		vi.advanceTimersByTime(3000);
+
+		expect(window.fetch).toHaveBeenCalledTimes(1);
+	});
+
+	it('refuses to run from a script on another origin', () => {
+		scanMode();
+		Object.defineProperty(document, 'currentScript', { configurable: true, get: () => ({ src: 'https://evil.example.net/cookie-manager/scan/beacon.js' }) });
+
+		try {
+			loadScript('cmk-beacon.js');
+			vi.advanceTimersByTime(5000);
+		} finally {
+			delete document.currentScript;
+		}
+
+		expect(window.fetch).not.toHaveBeenCalled();
 	});
 });
