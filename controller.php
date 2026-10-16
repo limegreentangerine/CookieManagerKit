@@ -30,7 +30,7 @@ class Controller extends PackageController
      *
      * @var string
      */
-    protected $pkgVersion = '0.1.0';
+    protected $pkgVersion = '0.2.0';
 
     /**
      * The minimum Concrete version compatible with the package.
@@ -102,6 +102,7 @@ class Controller extends PackageController
      * @var array
      */
     protected $databaseTables = [
+        'cmkStats',
         'cmkServiceContents',
         'cmkCategoryContents',
         'cmkServices',
@@ -159,6 +160,18 @@ class Controller extends PackageController
             '/cookie-manager/consent',
             '\CookieManagerKit\Ajax\Consent::record',
             'cookie_manager_kit.consent',
+            [],
+            [],
+            '',
+            [],
+            ['POST'],
+        );
+
+        // Public: anonymous banner statistics. Same defences as the consent endpoint. See Ajax\Event.
+        Route::register(
+            '/cookie-manager/event',
+            '\CookieManagerKit\Ajax\Event::record',
+            'cookie_manager_kit.event',
             [],
             [],
             '',
