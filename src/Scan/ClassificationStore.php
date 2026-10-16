@@ -20,7 +20,8 @@ class ClassificationStore
     public function entries(): array
     {
         try {
-            $rows = $this->em->getRepository(ClassificationEntry::class)->findAll();
+            // Newest first, so the classifier's stable sort lets the most recent rule win a tie.
+            $rows = $this->em->getRepository(ClassificationEntry::class)->findBy([], ['id' => 'DESC']);
         } catch (TableNotFoundException) {
             // The package Update has not run yet; there is simply nothing to match against.
             return [];
@@ -95,9 +96,33 @@ class ClassificationStore
         $this->replaceOrigin(ClassificationEntry::BUNDLED, $rows);
     }
 
+    /**
+     * Stores an override. An existing override for the same kind and pattern is replaced (never duplicated); the delete
+     * and the insert run on the DBAL connection in one transaction, and no other origin is touched.
+     */
     public function addOverride(string $kind, string $pattern, string $category, string $vendor): void
     {
-        $this->em->persist((new ClassificationEntry())->define($kind, $pattern, $category, $vendor, '', '', ClassificationEntry::OVERRIDE));
-        $this->em->flush();
+        $entry = (new ClassificationEntry())->define($kind, $pattern, $category, $vendor, '', '', ClassificationEntry::OVERRIDE);
+        $metadata = $this->em->getClassMetadata(ClassificationEntry::class);
+        $table = $metadata->getTableName();
+        $column = static fn(string $field): string => $metadata->getColumnName($field);
+        $connection = $this->em->getConnection();
+
+        $connection->transactional(function () use ($connection, $table, $column, $entry): void {
+            $connection->executeStatement(
+                'DELETE FROM ' . $table . ' WHERE ' . $column('origin') . ' = ? AND ' . $column('kind') . ' = ? AND ' . $column('pattern') . ' = ?',
+                [ClassificationEntry::OVERRIDE, $entry->getKind(), $entry->getPattern()],
+            );
+
+            $connection->insert($table, [
+                $column('kind') => $entry->getKind(),
+                $column('pattern') => $entry->getPattern(),
+                $column('categoryHandle') => $entry->getCategoryHandle(),
+                $column('vendor') => $entry->getVendor(),
+                $column('description') => $entry->getDescription(),
+                $column('duration') => $entry->getDuration(),
+                $column('origin') => $entry->getOrigin(),
+            ]);
+        });
     }
 }

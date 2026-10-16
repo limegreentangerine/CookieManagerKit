@@ -32,7 +32,7 @@ class Scanner extends DashboardPageController
             $counts[$status] = $findings->count(['status' => $status]);
         }
 
-        $lastCrawl = $this->entityManager->getRepository(ScanRun::class)->findOneBy(['source' => ScanRun::CRAWL], ['id' => 'DESC']);
+        $lastCrawl = $this->entityManager->getRepository(ScanRun::class)->findOneBy(['source' => ScanRun::CRAWL, 'status' => ScanRun::COMPLETE], ['id' => 'DESC']);
 
         $this->set('lastCrawl', $lastCrawl instanceof ScanRun ? $lastCrawl : null);
         $this->set('runs', ScanRuns::recent($this->entityManager, 20));
@@ -66,7 +66,7 @@ class Scanner extends DashboardPageController
                 $this->flash('error', t('The crawl could not finish. Details are in the cookie_manager log.'));
             }
         } catch (CrawlAlreadyRunning) {
-            $this->flash('error', h(CrawlRunner::ALREADY_RUNNING));
+            $this->flash('error', t(CrawlRunner::ALREADY_RUNNING));
         } catch (UnsafeUrl $e) {
             ErrorLog::record($e);
             $this->flash('error', t('The site cannot be crawled. Set the site canonical URL; see the help on the Scanner Settings page for local sites.'));

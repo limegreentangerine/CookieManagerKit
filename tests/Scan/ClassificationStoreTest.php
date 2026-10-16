@@ -64,7 +64,7 @@ final class ClassificationStoreTest extends TestCase
     public function testEntriesAreReturnedAsPlainArrays(): void
     {
         $repository = $this->createMock(ObjectRepository::class);
-        $repository->method('findAll')->willReturn([
+        $repository->method('findBy')->with([], ['id' => 'DESC'])->willReturn([
             (new ClassificationEntry())->define('cookie', '_ga', 'analytics', 'Google', 'd', '2 years', ClassificationEntry::BUNDLED),
         ]);
         $em = $this->manager();
@@ -90,7 +90,7 @@ final class ClassificationStoreTest extends TestCase
             }
         };
         $repository = $this->createMock(ObjectRepository::class);
-        $repository->method('findAll')->willThrowException(new TableNotFoundException('no such table', $driver));
+        $repository->method('findBy')->willThrowException(new TableNotFoundException('no such table', $driver));
         $em = $this->manager();
         $em->method('getRepository')->willReturn($repository);
 
@@ -174,15 +174,26 @@ final class ClassificationStoreTest extends TestCase
 
     public function testAnOverrideIsStoredWithTheOverrideOrigin(): void
     {
-        $em = $this->manager();
-        $stored = null;
-        $em->method('persist')->willReturnCallback(function (ClassificationEntry $entry) use (&$stored): void {
-            $stored = $entry;
-        });
-        $em->expects($this->once())->method('flush');
+        $connection = $this->sqlite();
 
-        (new ClassificationStore($em))->addOverride('cookie', 'my_cookie', 'preferences', 'Us');
+        $this->storeOn($connection)->addOverride('cookie', 'my_cookie', 'preferences', 'Us');
 
-        $this->assertSame([ClassificationEntry::OVERRIDE, 'my_cookie', 'preferences'], [$stored?->getOrigin(), $stored?->getPattern(), $stored?->getCategoryHandle()]);
+        $this->assertSame([['override', 'my_cookie', 'preferences']], $connection->fetchAllNumeric('SELECT origin, pattern, categoryHandle FROM cmkClassificationEntries'));
+    }
+
+    public function testSavingTheSameOverrideAgainReplacesItAndTouchesNothingElse(): void
+    {
+        $connection = $this->sqlite();
+        $store = $this->storeOn($connection);
+        $store->replaceOrigin('bundled', [self::row('my_cookie')]);
+
+        $store->addOverride('cookie', 'my_cookie', 'analytics', 'A');
+        $store->addOverride('cookie', 'my_cookie', 'marketing', 'B');
+        $store->addOverride('host', 'my_cookie', 'marketing', 'B');
+
+        $this->assertSame(
+            [['bundled', 'cookie', 'analytics'], ['override', 'cookie', 'marketing'], ['override', 'host', 'marketing']],
+            $connection->fetchAllNumeric('SELECT origin, kind, categoryHandle FROM cmkClassificationEntries ORDER BY origin, kind'),
+        );
     }
 }

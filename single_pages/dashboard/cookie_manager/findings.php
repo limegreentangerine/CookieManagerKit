@@ -7,6 +7,7 @@ use CookieManagerKit\Support\Output as O;
 /** @var CookieManagerKit\Entity\ScanFinding[] $findings */
 /** @var string $status */
 /** @var string $kind */
+/** @var string $categoryFilter '' (all), 'none' or a category handle */
 /** @var int $page */
 /** @var int $pages */
 /** @var int $total */
@@ -47,6 +48,16 @@ $handles = array_keys($categories);
             <option value=""><?php echo t('All') ?></option>
             <?php foreach ($kindLabels as $value => $label) { ?>
                 <option value="<?php echo O::e($value) ?>" <?php echo O::e($kind === $value ? 'selected' : '') ?>><?php echo O::e($label) ?></option>
+            <?php } ?>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label" for="cmk-category"><?php echo t('Category') ?></label>
+        <select class="form-select" id="cmk-category" name="category">
+            <option value=""><?php echo t('All') ?></option>
+            <option value="none" <?php echo O::e($categoryFilter === 'none' ? 'selected' : '') ?>><?php echo t('No suggestion') ?></option>
+            <?php foreach ($categories as $handle => $info) { ?>
+                <option value="<?php echo O::e($handle) ?>" <?php echo O::e($categoryFilter === $handle ? 'selected' : '') ?>><?php echo O::e($info['title']) ?></option>
             <?php } ?>
         </select>
     </div>
@@ -112,7 +123,7 @@ $handles = array_keys($categories);
                                     </select>
                                     <input type="text" class="form-control mb-2" name="name" maxlength="255" placeholder="<?php echo t('New service name') ?>" value="<?php echo O::e($row->getSuggestedVendor() ?? $row->getHost()) ?>">
                                     <input type="text" class="form-control mb-2" name="vendor" maxlength="255" placeholder="<?php echo t('Vendor') ?>" value="<?php echo O::e($row->getSuggestedVendor() ?? '') ?>">
-                                    <select class="form-select mb-2" name="categoryID">
+                                    <select class="form-select mb-2" name="categoryID" aria-label="<?php echo t('Category for a new service') ?>">
                                         <?php foreach ($categories as $handle => $info) { ?>
                                             <option value="<?php echo O::e($info['id']) ?>" <?php echo O::e($handle === $preselect ? 'selected' : '') ?>><?php echo O::e($info['title']) ?></option>
                                         <?php } ?>
@@ -165,7 +176,7 @@ $handles = array_keys($categories);
     <?php if ($pages > 1) { ?>
         <nav class="mt-3">
             <?php for ($n = 1; $n <= $pages; $n++) { ?>
-                <a class="btn btn-sm <?php echo O::e($n === $page ? 'btn-primary' : 'btn-outline-secondary') ?>" href="<?php echo O::e('?page=' . (int) $n . '&status=' . rawurlencode($status) . '&kind=' . rawurlencode($kind)) ?>"><?php echo O::e($n) ?></a>
+                <a class="btn btn-sm <?php echo O::e($n === $page ? 'btn-primary' : 'btn-outline-secondary') ?>" href="<?php echo O::e('?page=' . (int) $n . '&status=' . rawurlencode($status) . '&kind=' . rawurlencode($kind) . '&category=' . rawurlencode($categoryFilter)) ?>"><?php echo O::e($n) ?></a>
             <?php } ?>
         </nav>
     <?php } ?>

@@ -28,7 +28,7 @@ final class FindingsViewTest extends TestCase
     /**
      * @param list<ScanFinding> $findings
      */
-    private static function render(array $findings, string $status = '', string $kind = ''): string
+    private static function render(array $findings, string $status = '', string $kind = '', string $categoryFilter = '', int $pages = 1): string
     {
         $view = new class {
             public function action(string $name): string
@@ -46,7 +46,6 @@ final class FindingsViewTest extends TestCase
         $services = [(new Service())->setName(self::HOSTILE)];
         (new \ReflectionProperty(BaseEntity::class, 'id'))->setValue($services[0], 5);
         $total = count($findings);
-        $pages = 1;
         $page = 1;
 
         ob_start();
@@ -133,6 +132,26 @@ final class FindingsViewTest extends TestCase
 
         $this->assertNull($finding->getService());
         $this->assertStringContainsString('<code>_ga</code>', self::render([$finding]));
+    }
+
+    public function testTheCategoryFilterOffersNoneAndEveryCategoryAndKeepsTheChoice(): void
+    {
+        $html = self::render([], '', '', 'analytics');
+
+        $this->assertStringContainsString('name="category"', $html);
+        $this->assertStringContainsString('<option value="none" >', $html);
+        $this->assertStringContainsString('<option value="necessary" >', $html);
+        $this->assertStringContainsString('<option value="analytics" selected>', $html);
+        $this->assertStringNotContainsString('<img src=x', $html);
+    }
+
+    public function testPaginationLinksKeepTheFiltersEncoded(): void
+    {
+        $finding = self::finding(1, 'cookie', '_ga', 'example.com', ScanFinding::MATCHED);
+
+        $html = self::render([$finding], 'matched', 'cookie', 'none', 2);
+
+        $this->assertStringContainsString('href="?page=2&amp;status=matched&amp;kind=cookie&amp;category=none"', $html);
     }
 
     public static function setUpBeforeClass(): void

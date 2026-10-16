@@ -35,25 +35,31 @@ $statuses = ['running' => t('Running'), 'complete' => t('Complete'), 'failed' =>
 <?php } ?>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-3">
+    <div class="col-md">
         <div class="card"><div class="card-body">
             <div class="text-muted"><?php echo t('Unclassified') ?></div>
             <div class="fs-3"><?php echo O::e(number_format((int) ($counts['unclassified'] ?? 0))) ?></div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md">
+        <div class="card"><div class="card-body">
+            <div class="text-muted"><?php echo t('New in the last completed crawl') ?></div>
+            <div class="fs-3"><?php echo O::e($lastCrawl === null ? '-' : number_format($lastCrawl->getNewCount())) ?></div>
+        </div></div>
+    </div>
+    <div class="col-md">
         <div class="card"><div class="card-body">
             <div class="text-muted"><?php echo t('Matched, to review') ?></div>
             <div class="fs-3"><?php echo O::e(number_format((int) ($counts['matched'] ?? 0))) ?></div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md">
         <div class="card"><div class="card-body">
             <div class="text-muted"><?php echo t('Approved') ?></div>
             <div class="fs-3"><?php echo O::e(number_format((int) ($counts['approved'] ?? 0))) ?></div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md">
         <div class="card"><div class="card-body">
             <div class="text-muted"><?php echo t('Last runtime scan') ?></div>
             <div class="fs-6"><?php echo O::e($when($lastBeacon)) ?></div>
@@ -72,7 +78,7 @@ $statuses = ['running' => t('Running'), 'complete' => t('Complete'), 'failed' =>
     </div>
     <div class="col-md-6">
         <h3><?php echo t('Scan mode') ?></h3>
-        <p class="text-muted"><?php echo t('Start scan mode, accept all cookies on the banner, then browse the site in this browser. For 30 minutes this browser reports the names of cookies and storage keys and the hosts of what each page loaded. Values are never read, and other visitors are not affected.') ?></p>
+        <p class="text-muted"><?php echo t('Start scan mode, accept all cookies on the banner, then browse the site in this browser. For 30 minutes this browser reports the names of cookies and storage keys and the hosts of what each page loaded. Values are never read, and other visitors are not affected. Scan mode is site-wide, not per administrator: starting a session ends any scan session another administrator has running.') ?></p>
         <?php if ($secretMissing) { ?>
             <div class="alert alert-danger"><?php echo t('Scan mode is unavailable: this installation has no site security token.') ?></div>
         <?php } elseif ($scanModeActive) { ?>

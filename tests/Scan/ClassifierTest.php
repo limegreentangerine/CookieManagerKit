@@ -143,4 +143,15 @@ final class ClassifierTest extends TestCase
         $this->assertNull($classifier->classify('cookie', '"><img src=x onerror=alert(1)>', 'e.com'));
         $this->assertNull($classifier->classify('cookie', str_repeat('a', 10000), 'e.com'));
     }
+
+    public function testWhenTwoOverridesTieTheEarlierEntryWins(): void
+    {
+        // ClassificationStore::entries() lists the newest row first, so a re-saved rule beats the one it replaced.
+        $classifier = new Classifier([
+            ['kind' => 'cookie', 'pattern' => '_x', 'category' => 'marketing', 'vendor' => 'New', 'origin' => 'override'],
+            ['kind' => 'cookie', 'pattern' => '_x', 'category' => 'analytics', 'vendor' => 'Old', 'origin' => 'override'],
+        ], static fn(string $name): bool => false);
+
+        $this->assertSame('marketing', $classifier->classify('cookie', '_x', 'e.com')?->category);
+    }
 }

@@ -72,6 +72,18 @@ final class ScannerViewTest extends TestCase
         $this->assertStringContainsString('saw everything', self::scanner([$crawl], $crawl));
     }
 
+    public function testTheNewBadgeShowsTheLastCompletedCrawlCountAndScanModeIsSaidToBeSiteWide(): void
+    {
+        $crawl = (new ScanRun())->start(ScanRun::CRAWL, 1700000000)->setCounts(7, 0, 0)->finish(ScanRun::COMPLETE, 1700000100);
+
+        $html = self::scanner([$crawl], $crawl);
+
+        $this->assertStringContainsString('New in the last completed crawl', $html);
+        $this->assertMatchesRegularExpression('~New in the last completed crawl</div>\s*<div class="fs-3">7</div>~', $html);
+        $this->assertStringContainsString('site-wide', $html);
+        $this->assertStringContainsString('<div class="fs-3">-</div>', self::scanner([], null));
+    }
+
     public function testNoCrawlYetShowsNoVerdict(): void
     {
         $html = self::scanner([], null);

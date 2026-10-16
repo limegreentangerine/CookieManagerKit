@@ -20,11 +20,20 @@ final class Review
      * Attaches the finding to $service, or to a new service named $name in $category, and records the host on the
      * service so the banner and the later declaration can say where it loads from.
      *
-     * @throws \InvalidArgumentException when a new service is wanted without a name
+     * @throws \DomainException          when the finding is not awaiting review (already approved, ignored or gone); nothing changes
+     * @throws \InvalidArgumentException when a new service is wanted without a name or a category
      */
-    public static function approve(ScanFinding $finding, Category $category, ?Service $service, string $name, string $vendor): Service
+    public static function approve(ScanFinding $finding, ?Category $category, ?Service $service, string $name, string $vendor): Service
     {
+        if (!$finding->isReviewable()) {
+            throw new \DomainException('This finding is not awaiting review.');
+        }
+
         if ($service === null) {
+            if ($category === null) {
+                throw new \InvalidArgumentException('A new service needs a category.');
+            }
+
             $name = Text::plain($name);
 
             if ($name === '') {
@@ -65,7 +74,8 @@ final class Review
         foreach ($services as $service) {
             $category = $service->getCategory();
 
-            if ($category !== null) {
+            // An inactive service is hidden from visitors on purpose; approving must not quietly attach to it.
+            if ($category !== null && $service->isActive()) {
                 $byKey[$category->getHandle() . '|' . mb_strtolower($service->getName())] ??= $service;
             }
         }

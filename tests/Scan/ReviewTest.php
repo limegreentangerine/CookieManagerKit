@@ -204,4 +204,60 @@ final class ReviewTest extends TestCase
         $this->assertSame('necessary', Review::defaultCategory(null, ['necessary', 'marketing']));
         $this->assertNull(Review::defaultCategory('x', []));
     }
+
+    public function testApprovingTheSameFindingTwiceChangesNothingTheSecondTime(): void
+    {
+        $analytics = self::category('analytics');
+        $finding = self::finding('script', 'cdn.example.net', 'cdn.example.net');
+        $first = Review::approve($finding, $analytics, null, 'First', '');
+
+        try {
+            Review::approve($finding, $analytics, null, 'Second', '');
+            $this->fail('approved twice');
+        } catch (\DomainException) {
+            $this->assertSame($first, $finding->getService());
+            $this->assertSame('First', $finding->getService()->getName());
+        }
+    }
+
+    public function testIgnoredAndGoneFindingsCannotBeApproved(): void
+    {
+        $analytics = self::category('analytics');
+        $service = (new Service())->setName('GA')->setCategory($analytics);
+
+        foreach ([ScanFinding::IGNORED, ScanFinding::GONE] as $status) {
+            $finding = self::finding('script', 'cdn.example.net', 'cdn.example.net', $status);
+
+            try {
+                Review::approve($finding, $analytics, $service, '', '');
+                $this->fail('approved a ' . $status . ' finding');
+            } catch (\DomainException) {
+                $this->assertSame([$status, null], [$finding->getStatus(), $finding->getService()]);
+                $this->assertSame([], $service->getDomains());
+            }
+        }
+    }
+
+    public function testAnExistingServiceNeedsNoCategoryButANewOneDoes(): void
+    {
+        $service = (new Service())->setName('GA')->setCategory(self::category('analytics'));
+
+        $this->assertSame($service, Review::approve(self::finding('cookie', '_ga', 'e.com'), null, $service, '', ''));
+
+        $this->expectException(\InvalidArgumentException::class);
+        Review::approve(self::finding('cookie', '_x', 'e.com'), null, null, 'New', '');
+    }
+
+    public function testApproveMatchedNeverAttachesToAnInactiveService(): void
+    {
+        $analytics = self::category('analytics');
+        $inactive = (new Service())->setName('Google')->setCategory($analytics)->setActive(false);
+        $finding = self::finding('cookie', '_ga', 'example.com')->setSuggestion('analytics', 'Google');
+
+        $created = Review::approveMatched([$finding], ['analytics' => $analytics], [$inactive]);
+
+        $this->assertCount(1, $created);
+        $this->assertNotSame($inactive, $finding->getService());
+        $this->assertSame($created[0], $finding->getService());
+    }
 }

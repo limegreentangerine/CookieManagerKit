@@ -58,11 +58,43 @@ class Findings extends DashboardPageController
         return is_string($value) && in_array($value, $allowed, true) ? $value : '';
     }
 
+    /**
+     * The category filter: '' (all), 'none' (no suggestion) or the handle of a category that exists.
+     */
+    private function categoryFilter(): string
+    {
+        $value = $this->request->query->get('category');
+
+        if (!is_string($value) || $value === '') {
+            return '';
+        }
+
+        if ($value === 'none') {
+            return 'none';
+        }
+
+        foreach ($this->entityManager->getRepository(Category::class)->findAll() as $category) {
+            if ($category->getHandle() === $value) {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
     public function view()
     {
         $status = $this->choice('status', ScanFinding::STATUSES);
         $kind = $this->choice('kind', ScanFinding::KINDS);
+        $categoryFilter = $this->categoryFilter();
         $criteria = array_filter(['status' => $status, 'kind' => $kind], static fn(string $value): bool => $value !== '');
+
+        if ($categoryFilter === 'none') {
+            $criteria['suggestedCategory'] = null;
+        } elseif ($categoryFilter !== '') {
+            $criteria['suggestedCategory'] = $categoryFilter;
+        }
+
         $repository = $this->entityManager->getRepository(ScanFinding::class);
         $total = $repository->count($criteria);
         $pages = max(1, (int) ceil($total / self::PER_PAGE));
@@ -80,6 +112,7 @@ class Findings extends DashboardPageController
         $this->set('findings', $repository->findBy($criteria, ['lastSeen' => 'DESC', 'id' => 'DESC'], self::PER_PAGE, ($page - 1) * self::PER_PAGE));
         $this->set('status', $status);
         $this->set('kind', $kind);
+        $this->set('categoryFilter', $categoryFilter);
         $this->set('page', $page);
         $this->set('pages', $pages);
         $this->set('total', $total);
@@ -100,11 +133,13 @@ class Findings extends DashboardPageController
         }
 
         $finding = $this->finding($this->post('id'));
-        $category = $this->category($this->post('categoryID'));
         $serviceId = $this->post('serviceID');
-        $service = is_string($serviceId) && $serviceId !== '' ? $this->service($serviceId) : null;
+        $existing = is_string($serviceId) && $serviceId !== '';
+        $service = $existing ? $this->service($serviceId) : null;
+        // The category only matters when a new service is created.
+        $category = $existing ? null : $this->category($this->post('categoryID'));
 
-        if ($finding === null || $category === null || (is_string($serviceId) && $serviceId !== '' && $service === null)) {
+        if ($finding === null || ($existing && $service === null) || (!$existing && $category === null)) {
             $this->flash('error', t('That finding, category or service could not be found.'));
 
             return $this->buildRedirect(self::URL)->send();
@@ -112,6 +147,10 @@ class Findings extends DashboardPageController
 
         try {
             $service = Review::approve($finding, $category, $service, Text::plain($this->post('name')), Text::plain($this->post('vendor')));
+        } catch (\DomainException) {
+            $this->flash('error', t('That finding has already been reviewed.'));
+
+            return $this->buildRedirect(self::URL)->send();
         } catch (\InvalidArgumentException) {
             $this->flash('error', t('A new service needs a name.'));
 
@@ -230,6 +269,12 @@ class Findings extends DashboardPageController
 
         if ($finding === null || $category === null) {
             $this->flash('error', t('That finding or category could not be found.'));
+
+            return $this->buildRedirect(self::URL)->send();
+        }
+
+        if (!$finding->isReviewable()) {
+            $this->flash('error', t('That finding has already been reviewed.'));
 
             return $this->buildRedirect(self::URL)->send();
         }
