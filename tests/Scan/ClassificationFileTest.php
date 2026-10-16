@@ -71,6 +71,13 @@ final class ClassificationFileTest extends TestCase
             'empty pattern' => [$h . "cookie,,analytics,G,d,1\n"],
             'overlong pattern' => [$h . 'cookie,' . str_repeat('a', 129) . ",analytics,G,d,1\n"],
             'too many wildcards' => [$h . "cookie,*a*b*c*d,analytics,G,d,1\n"],
+            'bare wildcard' => [$h . "cookie,*,analytics,G,d,1\n"],
+            'double wildcard' => [$h . "cookie,**,analytics,G,d,1\n"],
+            'too few literals' => [$h . "cookie,ab*,analytics,G,d,1\n"],
+            'tld host wildcard' => [$h . "host,*.com,marketing,G,d,\n"],
+            'second level tld host wildcard' => [$h . "host,*.co.uk,marketing,G,d,\n"],
+            'invalid utf-8' => [$h . "cookie,_ga,analytics,G,\xC3\x28,1\n"],
+            'duplicate pattern' => [$h . "cookie,_ga,analytics,G,d,1\ncookie,_ga,marketing,G,d,1\n"],
             'category not a handle' => [$h . "cookie,_ga,Analytics!,G,d,1\n"],
             'one bad row spoils the file' => [$h . "cookie,_ga,analytics,G,d,1\ncookie,bad row,analytics,G,d,1\n"],
         ];
@@ -152,6 +159,32 @@ final class ClassificationFileTest extends TestCase
         $this->assertSame('marketing', $by['ad_id']['category']);
         $this->assertSame('preferences', $by['theme']['category']);
         $this->assertSame('necessary', $by['session_id']['category']);
+    }
+
+    public function testOnlyExactNamesCanBeNecessaryInTheOpenCookieDatabase(): void
+    {
+        $rows = (array) ClassificationFile::parseOpenCookieDatabase(self::ocd([
+            ['n1', 'P', 'Security', 'exact_name', 'x.com', 'd', '1y', 'V', '', '0'],
+            ['n2', 'P', 'Security', 'broad_family_', 'x.com', 'd', '1y', 'V', '', '1'],
+        ]));
+
+        $by = array_column($rows, null, 'pattern');
+
+        $this->assertSame('necessary', $by['exact_name']['category']);
+        $this->assertArrayNotHasKey('broad_family_*', $by);
+    }
+
+    public function testTooShortWildcardsAreUnusableInTheOpenCookieDatabase(): void
+    {
+        $rows = (array) ClassificationFile::parseOpenCookieDatabase(self::ocd([
+            ['w1', 'P', 'Marketing', 'ab', 'x.com', 'd', '1y', 'V', '', '1'],
+            ['w2', 'P', 'Marketing', '*', 'x.com', 'd', '1y', 'V', '', '0'],
+        ]));
+
+        $patterns = array_column($rows, 'pattern');
+
+        $this->assertNotContains('ab*', $patterns);
+        $this->assertNotContains('*', $patterns);
     }
 
     public function testTheOpenCookieDatabaseNeedsItsHeaderColumns(): void

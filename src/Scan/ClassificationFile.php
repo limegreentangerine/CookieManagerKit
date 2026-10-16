@@ -66,6 +66,32 @@ final class ClassificationFile
     }
 
     /**
+     * A wildcard pattern must stay specific: at least three literal characters, and for hosts a literal part with two
+     * or more labels whose registrable-looking label is at least three characters (so "*.com" and "*.co.uk" fail).
+     * Exact names have no such floor ("fr" is a real cookie).
+     */
+    private static function specificEnough(string $kind, string $pattern): bool
+    {
+        if (!str_contains($pattern, '*')) {
+            return true;
+        }
+
+        $literal = str_replace('*', '', $pattern);
+
+        if (strlen($literal) < 3) {
+            return false;
+        }
+
+        if ($kind === 'host') {
+            $labels = array_values(array_filter(explode('.', $literal), static fn(string $label): bool => $label !== ''));
+
+            return count($labels) >= 2 && strlen($labels[count($labels) - 2]) >= 3;
+        }
+
+        return true;
+    }
+
+    /**
      * @return array{kind: string, pattern: string, category: string, vendor: string, description: string, duration: string}|null
      */
     private static function row(string $kind, string $pattern, string $category, string $vendor, string $description, string $duration): ?array
@@ -75,7 +101,8 @@ final class ClassificationFile
         if (!in_array($kind, self::KINDS, true)
             || preg_match('/^[A-Za-z0-9_.*:~%+\-]{1,128}\z/', $pattern) !== 1
             || substr_count($pattern, '*') > 3
-            || !Text::isHandle($category)) {
+            || !Text::isHandle($category)
+            || !self::specificEnough($kind, $pattern)) {
             return null;
         }
 
@@ -99,6 +126,10 @@ final class ClassificationFile
      */
     public static function parseBundled(string $csv): ?array
     {
+        if (!mb_check_encoding($csv, 'UTF-8')) {
+            return null;
+        }
+
         $rows = self::read($csv);
 
         if ($rows === null || array_map('strtolower', array_map('trim', array_shift($rows))) !== self::HEADER) {
@@ -106,6 +137,7 @@ final class ClassificationFile
         }
 
         $out = [];
+        $seen = [];
 
         foreach ($rows as $row) {
             if (count($row) !== count(self::HEADER)) {
@@ -118,6 +150,13 @@ final class ClassificationFile
                 return null;
             }
 
+            $key = $entry['kind'] . "\0" . $entry['pattern'];
+
+            if (isset($seen[$key])) {
+                return null;
+            }
+
+            $seen[$key] = true;
             $out[] = $entry;
         }
 
@@ -168,6 +207,10 @@ final class ClassificationFile
                 $row[$at['description']] ?? '',
                 $row[$at['retention period']] ?? '',
             );
+
+            if ($entry !== null && $entry['category'] === 'necessary' && str_contains($entry['pattern'], '*')) {
+                $entry = null;
+            }
 
             if ($entry === null) {
                 $dropped++;
