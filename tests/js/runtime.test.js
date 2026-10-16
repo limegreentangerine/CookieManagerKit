@@ -197,7 +197,7 @@ describe('making a choice', () => {
 		expect(options.method).toBe('POST');
 		expect(options.credentials).toBe('same-origin');
 		expect(options.headers['Content-Type']).toBe('application/json');
-		expect(JSON.parse(options.body)).toEqual({ v: 2, c: ['necessary', 'preferences', 'analytics', 'marketing'] });
+		expect(JSON.parse(options.body)).toEqual({ v: 2, c: ['necessary', 'preferences', 'analytics', 'marketing'], g: 'accept_all', l: 'en_GB' });
 		expect(window.cmkRuntime.reload).not.toHaveBeenCalled();
 	});
 
@@ -867,5 +867,63 @@ describe('starting the scan-mode beacon', () => {
 		window.cmkRuntime.startBeacon();
 
 		expect(beaconScripts()[0].hasAttribute('nonce')).toBe(false);
+	});
+});
+
+
+describe('the consent id and the trigger', () => {
+	const GUID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+	const body = () => JSON.parse(window.fetch.mock.calls[0][1].body);
+
+	it('sends the trigger and locale and no id for a first-time visitor', () => {
+		mount();
+		button('Accept all').click();
+
+		expect(body()).toEqual({ v: 2, c: ['necessary', 'preferences', 'analytics', 'marketing'], g: 'accept_all', l: 'en_GB' });
+	});
+
+	it('classifies reject all and custom choices', () => {
+		mount();
+		button('Reject all').click();
+		expect(body().g).toBe('reject_all');
+	});
+
+	it('sends the id from the cookie on a later change, classified by the result not as "changed"', () => {
+		document.cookie = 'cmk_consent=' + encodeURIComponent(JSON.stringify({ v: 2, c: ['necessary'], t: 1700000000, i: GUID })) + '; Path=/';
+		mount();
+		window.cmkRuntime.open();
+		button('Customise')?.click();
+		button('Save').click();
+
+		expect(body().i).toBe(GUID);
+		expect(['reject_all', 'custom']).toContain(body().g);
+	});
+
+	it('uses the reconsent trigger and keeps the id after a policy bump', () => {
+		document.cookie = 'cmk_consent=' + encodeURIComponent(JSON.stringify({ v: 1, c: ['necessary', 'analytics'], t: 1700000000, i: GUID })) + '; Path=/';
+		mount();
+		button('Accept all').click();
+
+		expect(body().g).toBe('reconsent');
+		expect(body().i).toBe(GUID);
+	});
+
+	it('stores the id the server returns', async () => {
+		window.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, id: GUID }) }));
+		mount();
+		button('Accept all').click();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(window.cmk.id()).toBe(GUID);
+	});
+
+	it('ignores a hostile id in the reply and a reply with no json', async () => {
+		window.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, id: '"><script>' }) }));
+		mount();
+		button('Accept all').click();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(window.cmk.id()).toBe('');
+		expect(saved()).toContain('analytics');
 	});
 });

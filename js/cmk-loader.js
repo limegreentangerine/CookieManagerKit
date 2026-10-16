@@ -29,12 +29,14 @@
 	var COOKIE = 'cmk_consent';
 	var NECESSARY = 'necessary';
 	var HANDLE = /^[a-z0-9_-]{1,32}$/;
+	var GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 	var version = typeof boot.v === 'number' ? boot.v : 0;
 	var days = typeof boot.days === 'number' && boot.days > 0 ? boot.days : 180;
 	var known = [];
 	var handlers = Object.create(null);
 	var nonceMode = boot.nonce === true;
 	var current = null;
+	var prior = null;
 
 	(Array.isArray(boot.cats) ? boot.cats : []).forEach(function (handle) {
 		if (typeof handle === 'string' && HANDLE.test(handle) && known.indexOf(handle) === -1) {
@@ -99,10 +101,60 @@
 				return null;
 			}
 
-			return { v: data.v, c: categories, t: data.t };
+			var parsed = { v: data.v, c: categories, t: data.t };
+
+			if (typeof data.i === 'string' && GUID.test(data.i)) {
+				parsed.i = data.i;
+			}
+
+			return parsed;
 		} catch (e) {
 			return null;
 		}
+	}
+
+	/* A cookie from another policy version is not consent, but its id is how the visitor stays one record. */
+	function readPrior(raw) {
+		if (!raw) {
+			return null;
+		}
+
+		try {
+			var data = JSON.parse(decodeURIComponent(raw));
+
+			if (
+				!data ||
+				typeof data !== 'object' ||
+				Array.isArray(data) ||
+				typeof data.v !== 'number' ||
+				data.v === version
+			) {
+				return null;
+			}
+
+			return { id: typeof data.i === 'string' && GUID.test(data.i) ? data.i : '' };
+		} catch (e) {
+			return null;
+		}
+	}
+
+	function write() {
+		try {
+			d.cookie =
+				COOKIE +
+				'=' +
+				encodeURIComponent(JSON.stringify(current)) +
+				'; Path=/; Max-Age=' +
+				Math.round(days * 86400) +
+				'; SameSite=Lax' +
+				(w.location.protocol === 'https:' ? '; Secure' : '');
+		} catch (e) {
+			/* cookies blocked: the choice still applies to this page view */
+		}
+	}
+
+	function currentId() {
+		return current && current.i ? current.i : (prior && prior.id) || '';
 	}
 
 	function emit(name, payload) {
@@ -182,21 +234,15 @@
 		});
 
 		var previous = current;
+		var id = currentId();
 
 		current = { v: version, c: list, t: Math.floor(Date.now() / 1000) };
 
-		try {
-			d.cookie =
-				COOKIE +
-				'=' +
-				encodeURIComponent(JSON.stringify(current)) +
-				'; Path=/; Max-Age=' +
-				Math.round(days * 86400) +
-				'; SameSite=Lax' +
-				(w.location.protocol === 'https:' ? '; Secure' : '');
-		} catch (e) {
-			/* cookies blocked: the choice still applies to this page view */
+		if (id) {
+			current.i = id;
 		}
+
+		write();
 
 		activate();
 		emit('consent:changed', {
@@ -215,13 +261,40 @@
 		}
 	}
 
-	current = parse(readRaw());
+	var raw = readRaw();
+
+	current = parse(raw);
+	prior = current ? null : readPrior(raw);
 
 	w.cmk = {
 		version: version,
 		known: known.slice(),
 		get: function () {
-			return current ? { v: current.v, c: current.c.slice(), t: current.t } : null;
+			if (!current) {
+				return null;
+			}
+
+			var copy = { v: current.v, c: current.c.slice(), t: current.t };
+
+			if (current.i) {
+				copy.i = current.i;
+			}
+
+			return copy;
+		},
+		id: currentId,
+		reconsent: function () {
+			return !current && prior !== null;
+		},
+		setId: function (id) {
+			if (!current || typeof id !== 'string' || !GUID.test(id)) {
+				return false;
+			}
+
+			current.i = id;
+			write();
+
+			return true;
 		},
 		has: function (handle) {
 			return current ? current.c.indexOf(handle) !== -1 : handle === NECESSARY;

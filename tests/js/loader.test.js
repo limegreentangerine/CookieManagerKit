@@ -470,3 +470,81 @@ describe('nonce mode', () => {
 		expect(live().map((s) => s.text)).toEqual(['a()']);
 	});
 });
+
+const GUID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+
+describe('the consent id', () => {
+	it('is read from a valid cookie and exposed', () => {
+		setConsent(valid(['necessary', 'analytics'], { i: GUID }));
+		start();
+
+		expect(window.cmk.get().i).toBe(GUID);
+		expect(window.cmk.id()).toBe(GUID);
+		expect(window.cmk.reconsent()).toBe(false);
+	});
+
+	it('drops a malformed or hostile id but keeps the choice', () => {
+		setConsent(valid(['necessary', 'analytics'], { i: '"><script>alert(1)</script>' }));
+		start();
+
+		expect(window.cmk.get().c).toEqual(['necessary', 'analytics']);
+		expect(window.cmk.get().i).toBeUndefined();
+		expect(window.cmk.id()).toBe('');
+	});
+
+	it('rejects an id that is not lowercase hex', () => {
+		setConsent(valid(['necessary'], { i: GUID.toUpperCase() }));
+		start();
+
+		expect(window.cmk.id()).toBe('');
+	});
+
+	it('keeps the id of a cookie from an older policy version and flags re-consent', () => {
+		setConsent(valid(['necessary', 'analytics'], { v: 1, i: GUID }));
+		start();
+
+		expect(window.cmk.get()).toBeNull();
+		expect(window.cmk.reconsent()).toBe(true);
+		expect(window.cmk.id()).toBe(GUID);
+	});
+
+	it('does not flag re-consent for no cookie or a garbage cookie', () => {
+		start();
+		expect(window.cmk.reconsent()).toBe(false);
+
+		setConsent('%7Bnot-json');
+		start();
+		expect(window.cmk.reconsent()).toBe(false);
+		expect(window.cmk.id()).toBe('');
+	});
+
+	it('writes the id back into the cookie on the next save, so it stays constant', () => {
+		setConsent(valid(['necessary'], { v: 1, i: GUID }));
+		start();
+		window.cmk.save(['analytics']);
+
+		const stored = JSON.parse(decodeURIComponent(document.cookie.split('; ').find((p) => p.startsWith('cmk_consent=')).slice(12)));
+		expect(stored.i).toBe(GUID);
+		expect(stored.v).toBe(2);
+		expect(window.cmk.reconsent()).toBe(false);
+	});
+
+	it('setId stores a well-formed id and refuses anything else', () => {
+		start();
+		window.cmk.save(['analytics']);
+
+		expect(window.cmk.setId('nope')).toBe(false);
+		expect(window.cmk.setId('<b>')).toBe(false);
+		expect(window.cmk.id()).toBe('');
+		expect(window.cmk.setId(GUID)).toBe(true);
+		expect(window.cmk.id()).toBe(GUID);
+		expect(JSON.parse(decodeURIComponent(document.cookie.split('; ').find((p) => p.startsWith('cmk_consent=')).slice(12))).i).toBe(GUID);
+	});
+
+	it('setId does nothing when there is no choice yet', () => {
+		start();
+
+		expect(window.cmk.setId(GUID)).toBe(false);
+		expect(document.cookie).not.toContain('cmk_consent');
+	});
+});
