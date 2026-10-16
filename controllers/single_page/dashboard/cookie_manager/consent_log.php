@@ -3,8 +3,9 @@
 namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\CookieManager;
 
 use CookieManagerKit\Entity\Settings;
-use CookieManagerKit\Support\Catalog;
 use Symfony\Component\HttpFoundation\Response;
+use CookieManagerKit\Support\{Catalog, ErrorLog};
+use Doctrine\DBAL\Exception\TableNotFoundException;
 use Concrete\Core\Page\Controller\DashboardPageController;
 use CookieManagerKit\Consent\{ConsentLogCsv, ConsentLogFilter, ConsentTrigger, DoctrineConsentLogReader};
 
@@ -40,8 +41,10 @@ class ConsentLog extends DashboardPageController
             $result = $this->reader()->page($filter, self::PER_PAGE, ($page - 1) * self::PER_PAGE);
             $rows = $result['rows'];
             $total = $result['total'];
-        } catch (\Throwable) {
+        } catch (TableNotFoundException) {
             // The tables do not exist until the package Update has run; show an empty log rather than an error.
+        } catch (\Throwable $e) {
+            ErrorLog::record($e);
         }
 
         $this->set('filter', $filter);

@@ -111,6 +111,8 @@ final class ConsentLogViewTest extends TestCase
         $html = self::render([self::row()], $filter, 120);
 
         $this->assertStringContainsString('?page=3', $html);
+        $this->assertStringContainsString('&amp;category=&amp;', $html);
+        $this->assertStringNotContainsString('?page=4', $html);
         $this->assertStringNotContainsString('<img', $html);
         $this->assertStringNotContainsString('onerror', $html);
     }
