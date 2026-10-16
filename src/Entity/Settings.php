@@ -96,7 +96,7 @@ class Settings extends UpdatedGuidEntity
     protected $scanMaxPages = 50;
 
     /**
-     * @ORM\Column(type="string", length=1000, nullable=false, options={"default": "", "comment": "Path patterns the crawl skips, one per line"})
+     * @ORM\Column(type="text", nullable=false, options={"default": "", "comment": "Path patterns the crawl skips, one per line"})
      */
     protected $scanExcludes = '';
 

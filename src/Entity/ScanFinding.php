@@ -104,15 +104,17 @@ class ScanFinding extends UpdatedEntity
 
     public static function fingerprintFor(string $kind, string $name, string $host): string
     {
+        $kind = in_array($kind, self::KINDS, true) ? $kind : self::RESOURCE;
+
         return sha1($kind . "\0" . $name . "\0" . $host);
     }
 
     public function identify(string $kind, string $name, string $host): self
     {
         $this->kind = in_array($kind, self::KINDS, true) ? $kind : self::RESOURCE;
-        $this->name = $name;
-        $this->host = $host;
-        $this->fingerprint = self::fingerprintFor($this->kind, $name, $host);
+        $this->name = mb_substr($name, 0, 255, 'UTF-8');
+        $this->host = mb_substr($host, 0, 253, 'UTF-8');
+        $this->fingerprint = self::fingerprintFor($this->kind, $this->name, $this->host);
 
         return $this;
     }

@@ -115,4 +115,18 @@ final class ScanFindingTest extends TestCase
         $this->assertNull($finding->getSuggestedCategory());
         $this->assertNull($finding->getSuggestedVendor());
     }
+
+    public function testOverlongNameAndHostAreCappedBeforeTheFingerprint(): void
+    {
+        $finding = (new ScanFinding())->identify('cookie', str_repeat('n', 10000), str_repeat('h', 1000));
+
+        $this->assertSame(255, mb_strlen($finding->getName()));
+        $this->assertSame(253, mb_strlen($finding->getHost()));
+        $this->assertSame(ScanFinding::fingerprintFor('cookie', $finding->getName(), $finding->getHost()), $finding->getFingerprint());
+    }
+
+    public function testFingerprintForNormalisesAnUnknownKind(): void
+    {
+        $this->assertSame(ScanFinding::fingerprintFor('resource', 'x', 'h'), ScanFinding::fingerprintFor('<b>', 'x', 'h'));
+    }
 }

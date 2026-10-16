@@ -99,4 +99,13 @@ final class SettingsScanTest extends TestCase
         $this->assertTrue($settings->isScanScheduleEnabled());
         $this->assertTrue($settings->isClassificationRefreshEnabled());
     }
+
+    public function testMaxSizeExcludeListIsStoredIntact(): void
+    {
+        $lines = array_map(static fn(int $i): string => '/' . str_pad((string) $i, 199, 'a'), range(1, 50));
+        $settings = (new Settings())->setScanExcludesText(implode("\n", $lines));
+
+        $this->assertSame($lines, $settings->getScanExcludes());
+        $this->assertSame(implode("\n", $lines), $settings->getScanExcludesText());
+    }
 }
