@@ -59,6 +59,7 @@
 		security_storage: [NECESSARY]
 	};
 	var consentMode = boot.cm === true;
+	var optOut = boot.model === 'opt_out';
 
 	function signalsFor(granted) {
 		var out = {};
@@ -92,6 +93,27 @@
 
 		state.wait_for_update = 500;
 		gtagConsent('default', state);
+	}
+
+	function gpc() {
+		try {
+			return w.navigator.globalPrivacyControl === true;
+		} catch (e) {
+			return false;
+		}
+	}
+
+	/* What is on before the visitor has chosen anything. A stored choice always replaces it. */
+	function initial() {
+		var list = optOut ? known.slice() : [NECESSARY];
+
+		if (gpc()) {
+			list = list.filter(function (handle) {
+				return handle !== 'marketing';
+			});
+		}
+
+		return list;
 	}
 
 	function readRaw() {
@@ -214,7 +236,7 @@
 	}
 
 	function activate() {
-		var granted = current ? current.c : [NECESSARY];
+		var granted = current ? current.c : initial();
 		var nodes = d.querySelectorAll('script[type="text/plain"][data-cmk-category]');
 
 		for (var i = 0; i < nodes.length; i++) {
@@ -321,6 +343,8 @@
 
 		if (current) {
 			gtagConsent('update', signalsFor(current.c));
+		} else if (initial().length > 1) {
+			gtagConsent('update', signalsFor(initial()));
 		}
 	}
 
@@ -355,8 +379,10 @@
 			return true;
 		},
 		has: function (handle) {
-			return current ? current.c.indexOf(handle) !== -1 : handle === NECESSARY;
+			return (current ? current.c : initial()).indexOf(handle) !== -1;
 		},
+		gpc: gpc,
+		initial: initial,
 		save: save,
 		activate: activate,
 		on: function (name, fn) {

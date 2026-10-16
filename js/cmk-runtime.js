@@ -321,8 +321,25 @@
 	}
 
 	/* For the audit log: what the visitor chose, or that they were asked again because the policy changed. */
-	function triggerFor(reconsent, saved, categories) {
-		return reconsent ? 'reconsent' : classify(saved, categories);
+	function sameSet(a, b) {
+		return (
+			a.length === b.length &&
+			a.every(function (handle) {
+				return b.indexOf(handle) !== -1;
+			})
+		);
+	}
+
+	function triggerFor(reconsent, previous, saved, categories) {
+		if (reconsent) {
+			return 'reconsent';
+		}
+
+		if (!previous && cmk.gpc() && sameSet(saved, cmk.initial())) {
+			return 'gpc';
+		}
+
+		return classify(saved, categories);
 	}
 
 	function close(restoreFocus) {
@@ -361,7 +378,7 @@
 				return saved.indexOf(handle) === -1;
 			});
 
-		post(saved, triggerFor(reconsent, saved, categories));
+		post(saved, triggerFor(reconsent, previous, saved, categories));
 		track(choiceEvent(previous, saved, categories));
 		close(true);
 
@@ -374,7 +391,9 @@
 		var banner = config.banner || {};
 		var labels = banner.labels || {};
 		var style = config.style || {};
-		var granted = cmk.get() ? cmk.get().c : [];
+		var stored = cmk.get();
+		var granted = stored ? stored.c : cmk.initial();
+		var gpcNote = !stored && cmk.gpc();
 		var categories = validCategories(config);
 
 		var root = el('div', {
@@ -417,6 +436,12 @@
 						? el('p', { class: 'cmk__cat-desc' }, lines(category.description))
 						: null,
 					servicesList(category),
+					gpcNote && category.handle === 'marketing'
+						? el('p', {
+								class: 'cmk__note',
+								text: "Pre-set by your browser's Global Privacy Control signal."
+							})
+						: null,
 					necessary ? cookiesList(category) : null
 				])
 			);

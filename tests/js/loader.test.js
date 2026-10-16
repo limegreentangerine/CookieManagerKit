@@ -651,3 +651,103 @@ describe('Consent Mode v2', () => {
 		SIGNALS.filter((s) => s !== 'security_storage').forEach((s) => expect(last[s]).toBe('denied'));
 	});
 });
+
+describe('the default model and GPC', () => {
+	const setGpc = (value) => Object.defineProperty(window.navigator, 'globalPrivacyControl', { value, configurable: true });
+
+	beforeEach(() => {
+		delete window.dataLayer;
+		delete window.gtag;
+	});
+
+	afterEach(() => {
+		delete window.navigator.globalPrivacyControl;
+		delete window.dataLayer;
+		delete window.gtag;
+	});
+
+	it('opt-in starts with only necessary', () => {
+		start({ ...BOOT, model: 'opt_in' });
+
+		expect(window.cmk.initial()).toEqual(['necessary']);
+	});
+
+	it('opt-out starts with every category', () => {
+		start({ ...BOOT, model: 'opt_out' });
+
+		expect(window.cmk.initial()).toEqual(['necessary', 'preferences', 'analytics', 'marketing']);
+	});
+
+	it('an unknown or missing model is opt-in', () => {
+		start({ ...BOOT, model: '"><script>' });
+		expect(window.cmk.initial()).toEqual(['necessary']);
+
+		start({ ...BOOT });
+		expect(window.cmk.initial()).toEqual(['necessary']);
+	});
+
+	it('GPC removes marketing from the starting selection in either model', () => {
+		setGpc(true);
+		start({ ...BOOT, model: 'opt_out' });
+		expect(window.cmk.gpc()).toBe(true);
+		expect(window.cmk.initial()).toEqual(['necessary', 'preferences', 'analytics']);
+
+		start({ ...BOOT, model: 'opt_in' });
+		expect(window.cmk.initial()).toEqual(['necessary']);
+	});
+
+	it('only a real true counts as GPC', () => {
+		setGpc('1');
+		start({ ...BOOT });
+		expect(window.cmk.gpc()).toBe(false);
+	});
+
+	it('opt-out runs optional scripts before any choice, GPC keeps marketing inert', () => {
+		document.body.innerHTML =
+			'<script type="text/plain" data-cmk-category="analytics">a()</script>' +
+			'<script type="text/plain" data-cmk-category="marketing">m()</script>';
+		setGpc(true);
+		start({ ...BOOT, model: 'opt_out' });
+
+		expect(live().map((s) => s.text)).toEqual(['a()']);
+		expect(window.cmk.has('analytics')).toBe(true);
+		expect(window.cmk.has('marketing')).toBe(false);
+		expect(window.cmk.get()).toBeNull();
+	});
+
+	it('opt-out writes no cookie until the visitor acts', () => {
+		start({ ...BOOT, model: 'opt_out' });
+
+		expect(document.cookie).not.toContain('cmk_consent');
+	});
+
+	it('a stored choice always beats the model', () => {
+		setConsent(valid(['necessary']));
+		start({ ...BOOT, model: 'opt_out' });
+
+		expect(window.cmk.has('analytics')).toBe(false);
+	});
+
+	it('Consent Mode applies the opt-out starting selection straight after the default', () => {
+		start({ ...BOOT, model: 'opt_out', cm: true });
+		const calls = window.dataLayer.map((a) => [...a]);
+
+		expect(calls[0][1]).toBe('default');
+		expect(calls[1][1]).toBe('update');
+		expect(calls[1][2]).toMatchObject({ analytics_storage: 'granted', ad_storage: 'granted' });
+	});
+
+	it('Consent Mode under opt-out and GPC keeps ad signals denied', () => {
+		setGpc(true);
+		start({ ...BOOT, model: 'opt_out', cm: true });
+		const update = window.dataLayer.map((a) => [...a]).find((c) => c[1] === 'update');
+
+		expect(update[2]).toMatchObject({ analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
+	});
+
+	it('Consent Mode under opt-in sends no update before a choice', () => {
+		start({ ...BOOT, model: 'opt_in', cm: true });
+
+		expect(window.dataLayer.map((a) => [...a]).filter((c) => c[1] === 'update')).toHaveLength(0);
+	});
+});
