@@ -91,6 +91,43 @@ class Settings extends UpdatedGuidEntity
     protected $policyVersion = 1;
 
     /**
+     * @ORM\Column(type="integer", nullable=false, options={"default": 50, "comment": "Most pages one crawl will fetch"})
+     */
+    protected $scanMaxPages = 50;
+
+    /**
+     * @ORM\Column(type="text", nullable=false, options={"default": "", "comment": "Path patterns the crawl skips, one per line"})
+     */
+    protected $scanExcludes = '';
+
+    /**
+     * @ORM\Column(type="boolean", nullable=false, options={"default": false, "comment": "Run the scheduled crawl"})
+     */
+    protected $scanSchedule = false;
+
+    /**
+     * @ORM\Column(type="string", length=255, nullable=false, options={"default": "", "comment": "Where scan alerts are emailed"})
+     */
+    protected $scanAlertEmail = '';
+
+    /**
+     * @ORM\Column(type="integer", nullable=false, options={"default": 60, "comment": "Days without a scan-mode run before it is flagged"})
+     */
+    protected $scanStaleDays = 60;
+
+    /**
+     * @ORM\Column(type="boolean", nullable=false, options={"default": false, "comment": "Download newer classification data"})
+     */
+    protected $classificationRefresh = false;
+
+    private static function clampInt(mixed $value, int $min, int $max, int $default): int
+    {
+        $number = is_int($value) || (is_string($value) && preg_match('/^-?\d{1,9}\z/', trim($value)) === 1) ? (int) $value : $default;
+
+        return max($min, min($max, $number));
+    }
+
+    /**
      * The saved settings, or an unsaved instance with the defaults if none have been saved yet. Never writes.
      */
     public static function get(): self
@@ -232,6 +269,101 @@ class Settings extends UpdatedGuidEntity
     public function bumpPolicyVersion(): self
     {
         $this->policyVersion = $this->getPolicyVersion() + 1;
+
+        return $this;
+    }
+
+    public function getScanMaxPages(): int
+    {
+        return self::clampInt($this->scanMaxPages, 1, 500, 50);
+    }
+
+    public function setScanMaxPages($value): self
+    {
+        $this->scanMaxPages = self::clampInt($value, 1, 500, 50);
+
+        return $this;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getScanExcludes(): array
+    {
+        return $this->scanExcludes === '' ? [] : explode("\n", (string) $this->scanExcludes);
+    }
+
+    public function getScanExcludesText(): string
+    {
+        return (string) $this->scanExcludes;
+    }
+
+    /**
+     * Keeps only plain path patterns: a leading slash, then path characters and `*`. Anything else is dropped.
+     */
+    public function setScanExcludesText($value): self
+    {
+        $patterns = [];
+
+        foreach (preg_split('/\R/', is_string($value) ? $value : '') ?: [] as $line) {
+            $line = trim($line);
+
+            if (preg_match('#^/[A-Za-z0-9/_\-.~%*]{0,199}\z#', $line) === 1) {
+                $patterns[] = $line;
+            }
+        }
+
+        $this->scanExcludes = implode("\n", array_slice(array_values(array_unique($patterns)), 0, 50));
+
+        return $this;
+    }
+
+    public function isScanScheduleEnabled(): bool
+    {
+        return (bool) $this->scanSchedule;
+    }
+
+    public function setScanScheduleEnabled($value): self
+    {
+        $this->scanSchedule = (bool) $value;
+
+        return $this;
+    }
+
+    public function getScanAlertEmail(): string
+    {
+        return (string) $this->scanAlertEmail;
+    }
+
+    public function setScanAlertEmail($value): self
+    {
+        $email = is_string($value) ? trim($value) : '';
+
+        $this->scanAlertEmail = strlen($email) <= 255 && filter_var($email, FILTER_VALIDATE_EMAIL) !== false ? $email : '';
+
+        return $this;
+    }
+
+    public function getScanStaleDays(): int
+    {
+        return self::clampInt($this->scanStaleDays, 7, 365, 60);
+    }
+
+    public function setScanStaleDays($value): self
+    {
+        $this->scanStaleDays = self::clampInt($value, 7, 365, 60);
+
+        return $this;
+    }
+
+    public function isClassificationRefreshEnabled(): bool
+    {
+        return (bool) $this->classificationRefresh;
+    }
+
+    public function setClassificationRefreshEnabled($value): self
+    {
+        $this->classificationRefresh = (bool) $value;
 
         return $this;
     }

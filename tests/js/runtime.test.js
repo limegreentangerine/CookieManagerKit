@@ -784,3 +784,88 @@ describe('when statistics cannot be sent', () => {
 		expect(root()).not.toBeNull();
 	});
 });
+
+describe('starting the scan-mode beacon', () => {
+	const SCAN_BOOT = { ...BOOT, scan: '/cookie-manager/scan/beacon.js' };
+
+	const beaconScripts = () => [...document.querySelectorAll('script[src*="beacon.js"]')];
+
+	afterEach(() => {
+		document.cookie = 'cmk_scan=; Path=/; Max-Age=0';
+		document.head.querySelectorAll('script[src*="beacon.js"]').forEach((node) => node.remove());
+	});
+
+	it('adds the beacon script when scan mode is on', () => {
+		document.cookie = 'cmk_scan=1; Path=/';
+		mount(config(), SCAN_BOOT);
+		window.cmkRuntime.startBeacon();
+
+		expect(beaconScripts()).toHaveLength(1);
+		expect(beaconScripts()[0].getAttribute('src')).toBe('/cookie-manager/scan/beacon.js');
+	});
+
+	it('adds nothing for ordinary visitors', () => {
+		mount(config(), SCAN_BOOT);
+		window.cmkRuntime.startBeacon();
+
+		expect(beaconScripts()).toHaveLength(0);
+	});
+
+	it('adds nothing when the server gave no beacon URL', () => {
+		document.cookie = 'cmk_scan=1; Path=/';
+		mount(config(), BOOT);
+		window.cmkRuntime.startBeacon();
+
+		expect(beaconScripts()).toHaveLength(0);
+	});
+
+	it.each(['https://evil.example.net/x.js', '//evil.example.net/x.js', 'javascript:alert(1)', 'beacon.js', '/\\evil.example.net/x.js', '/\t/evil.example.net/x.js', '/\n/evil.example.net/x.js'])('refuses a beacon URL that is not a same-origin path: %s', (url) => {
+		document.cookie = 'cmk_scan=1; Path=/';
+		mount(config(), { ...BOOT, scan: url });
+		window.cmkRuntime.startBeacon();
+
+		expect(document.querySelectorAll('script[src]')).toHaveLength(0);
+	});
+
+	it('adds the script only once', () => {
+		document.cookie = 'cmk_scan=1; Path=/';
+		mount(config(), SCAN_BOOT);
+		window.cmkRuntime.startBeacon();
+		window.cmkRuntime.startBeacon();
+
+		expect(beaconScripts()).toHaveLength(1);
+	});
+
+	it('does not treat a look-alike cookie as the marker', () => {
+		document.cookie = 'xcmk_scan=1; Path=/';
+		mount(config(), SCAN_BOOT);
+		window.cmkRuntime.startBeacon();
+		document.cookie = 'xcmk_scan=; Path=/; Max-Age=0';
+
+		expect(beaconScripts()).toHaveLength(0);
+	});
+
+	it('gives the script the runtime nonce when there is one', () => {
+		document.cookie = 'cmk_scan=1; Path=/';
+		Object.defineProperty(document, 'currentScript', { configurable: true, get: () => ({ nonce: 'abc123', getAttribute: () => 'abc123' }) });
+
+		try {
+			mount(config(), SCAN_BOOT);
+		} finally {
+			delete document.currentScript;
+		}
+
+		window.cmkRuntime.startBeacon();
+
+		expect(beaconScripts()[0].nonce).toBe('abc123');
+		expect(beaconScripts()[0].getAttribute('nonce')).toBe('abc123');
+	});
+
+	it('sets no nonce when there is none', () => {
+		document.cookie = 'cmk_scan=1; Path=/';
+		mount(config(), SCAN_BOOT);
+		window.cmkRuntime.startBeacon();
+
+		expect(beaconScripts()[0].hasAttribute('nonce')).toBe(false);
+	});
+});

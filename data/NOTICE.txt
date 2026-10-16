@@ -1,0 +1,7 @@
+classification-baseline.csv is a hand-curated list written for this package (original wording; well-known cookie
+names and script hosts).
+
+The optional "refresh" feature downloads the Open Cookie Database
+(https://github.com/jkwakman/Open-Cookie-Database), which is licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0). Downloaded data is parsed and reduced to a pattern, a category, a
+vendor, a description and a retention period; it is stored in the site's database, not in this package.

@@ -19,8 +19,8 @@ final class Catalog
 
     /** Built-in English text, used when an admin has not provided a value. */
     public const DEFAULTS = [
-        'title' => 'We value your privacy',
-        'body' => 'We use cookies to make this site work and, with your permission, to understand how it is used and to show relevant content. You can change your choice at any time.',
+        'title' => 'This website uses cookies',
+        'body' => 'We use cookies to personalise content and ads, to provide social media features and to analyse our traffic. We also share information about your use of our site with our social media, advertising and analytics partners who may combine it with other information that you\'ve provided to them or that they\'ve collected from your use of their services.',
         'acceptAll' => 'Accept all',
         'rejectAll' => 'Reject all',
         'customise' => 'Customise',

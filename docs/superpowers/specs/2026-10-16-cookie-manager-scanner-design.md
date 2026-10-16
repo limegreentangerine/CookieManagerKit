@@ -1,7 +1,7 @@
 # CookieManagerKit Phase 2: Scanner (Design)
 
 Date: 2026-10-16
-Status: Draft for user review
+Status: Implemented in 0.3.0 (adjustments recorded in section 13)
 Parent plan: `/Users/david/.claude/plans/cryptic-frolicking-pixel.md` (5-phase roadmap)
 Builds on: `docs/superpowers/specs/2026-10-15-cookie-manager-core-design.md` (phase 1, shipped as 0.1.0; 0.2.0 added banner statistics)
 
@@ -35,8 +35,8 @@ Out of scope for phase 2: a headless-browser scanner, scanning behind logins, th
 Doctrine entities under `src/Entity`, extending the same `ClassKit` `src/Entity/Core` bases as phase 1 (exact base per entity chosen when planning).
 
 - `ScanRun`: `source` (`crawl` | `beacon`), `startedAt`, `finishedAt`, `status` (`running` | `complete` | `failed`), `pagesScanned`, `newCount`, `changedCount`, `unclassifiedCount`. A beacon run is one admin scan-mode session.
-- `ScanFinding`: `kind` (`cookie` | `storage` | `script` | `iframe` | `image` | `resource`), `name`, `host`, `firstSeen`, `lastSeen`, `sources` (crawl, beacon or both), `examplePage`, `status`, `service` (nullable), `suggestedCategory` (nullable), `suggestedVendor` (nullable). Unique on `(kind, name, host)`.
-  - Status: `new` | `unclassified` | `matched` | `approved` | `ignored` | `gone`.
+- `ScanFinding`: `kind` (`cookie` | `storage` | `script` | `iframe` | `image` | `resource`), `name`, `host`, `firstSeen`, `lastSeen`, `sources` (crawl, beacon or both), `examplePage`, `status`, `service` (nullable), `suggestedCategory` (nullable), `suggestedVendor` (nullable). Identity is `(kind, name, host)`, stored as a unique `fingerprint` (sha1) because a composite key can exceed index limits. A nullable `restoreStatus` remembers the status a `gone` finding returns to. For `script`, `iframe`, `image` and `resource` findings `name` equals `host`.
+  - Status: `unclassified` | `matched` | `approved` | `ignored` | `gone`. "New" is not a stored status: it means `firstSeen` is at or after the last run's start, and is counted in `ScanRun.newCount`.
   - A finding not seen in a complete crawl is marked `gone`, not deleted, so history survives. It returns to its previous status if it reappears.
 - `ClassificationEntry`: `pattern` (exact name, or wildcard on name or host), `kind`, `categoryHandle`, `vendor`, `description`, `duration`, `origin` (`bundled` | `refreshed` | `override`).
   - Precedence: override, then refreshed, then bundled.
@@ -60,12 +60,12 @@ FindingIngestor  ->  Classifier  ->  ScanFinding / ScanRun
 - Requests only the site's own canonical host (section 8.2).
 - Parses each page with the WHATWG parser already used by `TrackingCode`, not regex. Collects `script src`, `iframe src`, `img src`, `link href`, hosts referenced by inline scripts, and `Set-Cookie` response headers.
 - Fetches as an anonymous visitor. No JS execution, no login.
-- Works in batches per task step so a large site does not time out.
+- Runs as one pass with a 240 s time budget and a 2,000,000 byte, 8 s per-page limit. Pages not reached when the budget ends count as failed, so an incomplete crawl never marks anything gone.
 
 ### 5.2 Beacon (scan mode)
 - "Start scan mode" in the dashboard issues an HMAC-signed token with a 30 minute expiry, set as a cookie in the admin's browser only.
-- Page HTML never changes. The page always references the same beacon asset; that asset's response is empty unless the request carries a valid token cookie, so cached pages stay identical.
-- The beacon reports to `POST /cookie-manager/scan/report`: cookie names from `document.cookie`, `localStorage` and `sessionStorage` key names, and resource hosts from `PerformanceObserver`. Values are never read.
+- Page HTML never changes. The runtime (already on every page) adds the beacon script only when the JavaScript-readable marker cookie `cmk_scan` is present, which only an admin in scan mode has. The beacon route answers 204 unless the request also carries the signed HttpOnly token, so cached pages stay identical and ordinary visitors make no extra request.
+- The beacon reports to `POST /cookie-manager/scan/report`: cookie names from `document.cookie`, `localStorage` and `sessionStorage` key names, and resource hosts from the Performance API. Values are never read.
 - The endpoint checks the token, content type, size, origin and rate limit. It stores names and hosts only.
 - The beacon stops at token expiry. The admin can end scan mode from the dashboard.
 
@@ -75,10 +75,11 @@ Registered through `tasks.xml` using the `NotificationManagerKit` pattern.
 - Flags a stale runtime scan when no beacon run exists within `scanStaleDays`.
 - A separate task refreshes classification data (section 7); disabled unless `classificationRefresh` is on.
 
-## 6. Dashboard (`/dashboard/cookie_manager/scanner`)
+## 6. Dashboard (three pages: `/dashboard/cookie_manager/scanner`, `/findings`, `/scan_settings`)
 - **Overview:** last crawl and last scan-mode run, stale-runtime warning, "Run crawl now", "Start/stop scan mode", new and unclassified badges, run history.
 - **Findings:** filter by status, kind and category. Per-row actions: approve (create or attach a Service), reassign category, ignore, save as override. Bulk approve is limited to `matched` findings.
 - **Settings:** page cap, exclude list, schedule, alert email, stale threshold, refresh on/off.
+- "Run crawl now" runs the crawl inside the request (with a 240 s budget); scheduled runs use the Concrete task. Large sites should schedule it.
 - Approve is the only path from finding to `Service`. It also records the cookie against the Service for the phase 4 declaration block.
 
 ## 7. Classification refresh
@@ -127,3 +128,20 @@ Extends phase 1 section 8.
 - Exact `ClassKit` entity base class per entity.
 - Crawl batch size and the per-request timeout values.
 - The refresh snapshot URL and the trimmed baseline's licence/attribution notice.
+
+## 13. Adjustments made during implementation
+Written back from the implementation plan and the build. Where they differ from the sections above, this section is authoritative.
+
+1. `new` is not a stored status (section 4).
+2. `ScanFinding` carries a unique `fingerprint` and a nullable `restoreStatus` (section 4).
+3. For `script`, `iframe`, `image` and `resource` findings `name` equals `host`: one finding per `(kind, host)`, not per URL.
+4. The dashboard is three single pages, not one (section 6).
+5. "Run crawl now" runs inside the request; scheduled runs use the Concrete task (section 6).
+6. The beacon is not referenced by page HTML; the runtime adds it when the `cmk_scan` marker cookie exists, and the route answers 204 without the signed token. It uses the Performance API (`getEntriesByType('resource')`) rather than a `PerformanceObserver` (section 5.2).
+7. The crawl is one pass with a time budget, not batches (section 5.1).
+8. Clarifies section 8.2: `UrlGuard` refuses loopback, private (RFC 1918), CGNAT, link-local and other non-public addresses by default. For local development sites only, the config key `cookie_manager_kit.scan.allow_private_network` allows loopback and RFC 1918 addresses (never link-local or metadata addresses), and the site needs a dotted hostname because dotless hosts are rejected. The canonical URL is required; the crawl never takes its host from a request.
+9. The alert email is plain text only. Section 8.1 mentioned HTML and plain-text parts; only the plain-text part was built.
+10. The classification refresh path tolerates up to 25% unusable rows (and requires a minimum row count), softer than section 7's "whole file or nothing"; any other failure still discards the whole file. It also rejects wildcard or very short patterns and wildcard `necessary` rows so a refresh cannot make broad matches. The size cap is 5,000,000 bytes.
+11. `ScanRun.sawEverything` records whether a crawl saw everything (no excluded, dropped or off-host, failed or truncated pages, and at least one page); only then are unseen findings marked `gone`, so a site with an exclude list never gets gone-marking. A sweeper marks crawl runs that stopped unfinished as failed, and a second concurrent crawl is refused.
+12. `POST /cookie-manager/scan/report` answers 401 for token or run refusals and 400 for every other refusal, always with one fixed body. `GET /cookie-manager/scan/beacon.js` answers 204 without a valid token.
+13. The Findings filter includes category, and the Scanner overview shows a "New in the last completed crawl" count. There is no Dashboard menu badge element; the "badge" in sections 2, 3 and 5.3 is the on-page counts.

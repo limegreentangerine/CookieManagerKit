@@ -14,7 +14,7 @@ live site.
 - PHP 8.4. The tracking-snippet rewriter uses PHP 8.4's `\Dom\HTMLDocument` HTML5 parser.
 - The `class_kit` package.
 
-## What it does (phase 1)
+## What it does (phases 1 and 2)
 
 - Consent categories and services, managed under `/dashboard/cookie_manager`.
 - Multilingual banner text: plain text, one set per site locale. The default locale comes
@@ -24,8 +24,9 @@ live site.
 - A floating settings button, and `data-cmk-open` to reopen the settings from any element.
 - Banner styling with a live preview (Appearance page).
 - Anonymous banner statistics (Statistics page, see below).
+- A cookie and script scanner with a review queue (Scanner pages, see below).
 
-Not built yet (later phases): cookie scanner, consent audit log, regional rules and GPC,
+Not built yet (later phases): consent audit log, regional rules and GPC,
 policy re-consent flow beyond the "Ask every visitor again" checkbox, Google Consent Mode,
 declaration block, embed placeholders, translation assist, A/B testing, and report export
 and sharing.
@@ -41,6 +42,78 @@ A banner display is counted once per browser tab session per policy version, and
 The event endpoint allows 120 requests a minute per client IP address, as seen by Concrete. Behind a reverse proxy or CDN, configure Concrete's trusted proxies so visitors are not all seen as one address; otherwise counts beyond the limit are silently dropped. The response rate is approximate (first choices divided by displays) and can pass 100%.
 
 After uploading a new version, run **Update** for the package in the dashboard. Until then the statistics table does not exist and events are quietly ignored.
+
+## Scanner
+
+The scanner finds what your site really sets and loads, suggests a consent category for each thing, and lets you turn the ones you approve into Services. Nothing a scan finds reaches the banner until you approve it. It adds three pages under `Dashboard > Cookie Manager`: Scanner, Findings and Scanner Settings.
+
+### What it records
+
+Cookie names, localStorage and sessionStorage key names, and the hosts of scripts, frames, images and other resources. Cookie and storage **values are never read or stored**. Everything recorded comes from the public internet, so names and hosts are cleaned, length-capped and always shown encoded; example pages are shown as plain text, never as links.
+
+### Crawl
+
+**Scanner > Run crawl now**, or the scheduled task. The crawl fetches your published pages as an anonymous visitor and lists the third-party hosts each page loads and the cookies each response sets. It runs no JavaScript.
+
+- **The canonical URL is required** (Dashboard > System & Settings > SEO & Statistics > URLs and Redirection). The crawl requests only that canonical host, never one taken from a request, on the address the host resolved to when the crawl began. It follows no redirects and refuses compressed responses.
+- Loopback, private, link-local and CGNAT addresses are refused. For a local development site, set `cookie_manager_kit.scan.allow_private_network` to true in `application/config/cookie_manager_kit.php` and use a dotted hostname (for example `site.test`, because dotless hosts are rejected):
+
+    ```php
+    <?php
+    return ['scan' => ['allow_private_network' => true]];
+    ```
+
+    This allows only loopback and RFC 1918 addresses, never link-local or cloud metadata addresses. Leave it off in production.
+
+- Each page is capped at 2 MB and 8 seconds, and the whole crawl has a 240 second soft budget. The page cap is set in Scanner Settings (default 50, maximum 500), and the paths you list there are skipped. **Run crawl now** runs inside the request, so on a large site use the scheduled task.
+- The crawl is an anonymous visitor, so members-only pages (which answer 403 or redirect) make it incomplete.
+- A finding that stops appearing is only marked **Gone** after a crawl that saw everything. If any page was excluded, dropped or off-host, failed, or cut off by the page cap, or if zero pages were fetched, nothing is marked gone, and the Scanner page says so. As a consequence, a site with an exclude list never gets gone-marking.
+- Only one crawl runs at a time; a crawl that stopped unfinished is cleaned up automatically.
+
+### Scan mode
+
+A crawl cannot see cookies and storage that scripts create in the browser. Scan mode can.
+
+1. **Scanner > Start scan mode.**
+2. In the same browser, open your site, choose **Accept all** on the banner, and browse a few pages.
+3. For the next 30 minutes this browser reports cookie names, storage key names and the hosts each page loaded. **Stop scan mode** ends it early.
+
+Only the browser that started scan mode is affected. It holds a signed token in an HttpOnly cookie (`cmk_scan_token`, SameSite=Strict, Secure on https) and a JavaScript-readable marker (`cmk_scan=1`). When the runtime sees the marker it loads the beacon from `/cookie-manager/scan/beacon.js`, which answers 204 unless the token is valid. The beacon posts names and hosts (never values) and the page path to `/cookie-manager/scan/report`. Page HTML is identical for every visitor, so full-page caching is unaffected and ordinary visitors make no extra request.
+
+Notes:
+
+- Scan mode is site-wide: there is one running session, and starting one ends another administrator's.
+- A site with a strict Content-Security-Policy needs `script-src 'self'` (or the runtime's nonce, which the beacon script reuses) and `connect-src 'self'`.
+- Navigations that do not load a new page (single-page apps) are not re-reported.
+- Scan mode needs the site security token secret (`concrete.security.token.validation`); it refuses to start when that is empty.
+
+### Review queue
+
+**Findings** lists everything found and can be filtered by status, kind and category. Each finding is **Matched** (a category was suggested) or **Unclassified**; the Scanner page also counts findings that are new in the last completed crawl ("new" is computed, not a stored status). For a finding you can:
+
+- **Approve**: create a Service or add it to an existing one. This is the only path from a finding to a Service, and an already approved finding cannot be approved again.
+- **Change suggested category**, or **Always classify like this** (saves an override rule that beats the built-in data; saving it again replaces the earlier one).
+- **Ignore** it (and **Review again** later).
+- **Approve all matched findings** to create one Service per vendor and category in one go. Only matched findings are included.
+
+### Classification data
+
+Suggestions come from three sources, strongest first: your own overrides, the optional downloaded data, and a hand-curated baseline that ships with the package (`data/classification-baseline.csv`, see `data/NOTICE.txt`). ConcreteCMS's own essential cookies are always suggested as **Necessary** and are never reclassified.
+
+The optional download is the [Open Cookie Database](https://github.com/jkwakman/Open-Cookie-Database) (Apache-2.0), fetched from one fixed HTTPS URL. It is off by default, sends nothing about your site, and is capped at 5,000,000 bytes and validated (header, row rules) before use. Unusable rows are dropped, up to 25% of the file; beyond that, or if the file fails any other check, the whole file is discarded and the previous data stays. Wildcard or very short patterns, and wildcard rows that would classify as `necessary`, are rejected. A successful refresh replaces only earlier refreshed rows, in one transaction.
+
+### Scheduling and alerts
+
+Under `Dashboard > System & Settings > Automation > Tasks` there are two tasks: **Scan the site for cookies and scripts** (`cmk_scan_crawl`) and **Update cookie classification data** (`cmk_refresh_classification`). The crawl task does nothing unless "Run the scheduled crawl" is ticked in Scanner Settings and a canonical URL exists; the update task does nothing unless downloading is ticked. The tasks are registered when the package is installed or updated, so run **Update** after upgrading.
+
+Alerts are the counts on the Scanner page plus an optional **plain-text** email (counts and names only) to the address you set in Scanner Settings. There is no menu badge. The Scanner page also warns when no scan-mode run has happened for the number of days you set (the scheduled crawl cannot run scan mode).
+
+### Scanner limitations
+
+- No headless browser: cookies that scripts add later are only found by scan mode.
+- No scanning behind logins; members-only pages make a crawl incomplete.
+- IPv6-only site hosts are not scanned.
+- Scan mode does not re-report single-page-app navigations.
 
 ## Blocking a script
 
@@ -112,7 +185,8 @@ cookie's name, purpose and duration under the always-allowed category:
 ## Security notes
 
 - Banner and category text is plain text only; no rich text in this phase.
-- Endpoints: `GET /cookie-manager/config/{locale}.json` and `POST /cookie-manager/consent`.
+- Endpoints: `GET /cookie-manager/config/{locale}.json` and `POST /cookie-manager/consent`
+  (plus the scanner's `POST /cookie-manager/scan/report` and `GET /cookie-manager/scan/beacon.js`, which need a valid scan token).
   The consent endpoint is same-origin, JSON only, strictly schema-checked and
   rate-limited. The rate limit uses the client IP, so configure Concrete's trusted proxies
   when running behind a proxy or CDN.

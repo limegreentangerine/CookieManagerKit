@@ -6,6 +6,7 @@ use Concrete\Core\Entity\Package;
 use ClassKit\Package\PackageController;
 use Doctrine\ORM\EntityManagerInterface;
 use CookieManagerKit\Events\ConsentManager;
+use CookieManagerKit\Scan\ClassificationStore;
 use Concrete\Core\Support\Facade\{Events, Route};
 use CookieManagerKit\Support\{Catalog, Installer};
 use ClassKit\Package\Traits\{AttributeTrait, BlockTrait, PageTrait};
@@ -30,7 +31,7 @@ class Controller extends PackageController
      *
      * @var string
      */
-    protected $pkgVersion = '0.2.0';
+    protected $pkgVersion = '0.3.0';
 
     /**
      * The minimum Concrete version compatible with the package.
@@ -102,6 +103,9 @@ class Controller extends PackageController
      * @var array
      */
     protected $databaseTables = [
+        'cmkScanFindings',
+        'cmkScanRuns',
+        'cmkClassificationEntries',
         'cmkStats',
         'cmkServiceContents',
         'cmkCategoryContents',
@@ -118,7 +122,10 @@ class Controller extends PackageController
      *
      * @var array
      */
-    protected $tasks = [];
+    protected $tasks = [
+        'cmk_scan_crawl' => \CookieManagerKit\Command\Task\Controller\CrawlController::class,
+        'cmk_refresh_classification' => \CookieManagerKit\Command\Task\Controller\RefreshClassificationController::class,
+    ];
 
     public function getPackageName()
     {
@@ -132,14 +139,23 @@ class Controller extends PackageController
 
     public function installOrUpgrade(Package $pkg)
     {
+        $this->installContentFile('tasks.xml');
+
         $this->addSinglePage('/dashboard/cookie_manager', $pkg, t('Cookie Manager'), t('Manage the cookie banner, categories and appearance'));
         $this->addSinglePage('/dashboard/cookie_manager/banner', $pkg, t('Banner'), t('Banner text for each language'));
         $this->addSinglePage('/dashboard/cookie_manager/categories', $pkg, t('Categories'), t('Consent categories'));
         $this->addSinglePage('/dashboard/cookie_manager/services', $pkg, t('Services'), t('Third-party services listed to visitors'));
         $this->addSinglePage('/dashboard/cookie_manager/appearance', $pkg, t('Appearance'), t('Colours, position and layout'));
         $this->addSinglePage('/dashboard/cookie_manager/statistics', $pkg, t('Statistics'), t('How visitors respond to the banner'));
+        $this->addSinglePage('/dashboard/cookie_manager/scanner', $pkg, t('Scanner'), t('Scan the site for cookies and scripts'));
+        $this->addSinglePage('/dashboard/cookie_manager/findings', $pkg, t('Findings'), t('Review what the scanner found'));
+        $this->addSinglePage('/dashboard/cookie_manager/scan_settings', $pkg, t('Scanner Settings'), t('Crawl limits, alerts and classification data'));
 
-        Installer::seed(app(EntityManagerInterface::class), Catalog::defaultLocale());
+        $em = app(EntityManagerInterface::class);
+
+        Installer::seed($em, Catalog::defaultLocale());
+        // Deliberately not caught: a failed seed must fail the install or upgrade loudly.
+        (new ClassificationStore($em))->syncBundled();
     }
 
     public function registerRoutes(): void
@@ -178,6 +194,30 @@ class Controller extends PackageController
             '',
             [],
             ['POST'],
+        );
+
+        // Public, but only useful with the signed scan-mode token an admin gets from the dashboard. See Ajax\ScanReport.
+        Route::register(
+            '/cookie-manager/scan/report',
+            '\CookieManagerKit\Ajax\ScanReport::record',
+            'cookie_manager_kit.scan_report',
+            [],
+            [],
+            '',
+            [],
+            ['POST'],
+        );
+
+        // Empty for everyone without the scan-mode token. See Ajax\ScanBeacon.
+        Route::register(
+            '/cookie-manager/scan/beacon.js',
+            '\CookieManagerKit\Ajax\ScanBeacon::script',
+            'cookie_manager_kit.scan_beacon',
+            [],
+            [],
+            '',
+            [],
+            ['GET', 'HEAD'],
         );
     }
 
