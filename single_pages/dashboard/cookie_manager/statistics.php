@@ -68,6 +68,8 @@ $columns = [
         </div>
     </div>
 
+    <p class="text-muted small"><?php echo t('Response rate is first choices divided by banner displays. A display is counted once per browser tab session, so the rate is approximate and can pass 100%, for example when visitors choose in a tab that was already open before counting started.') ?></p>
+
     <h3 class="h5"><?php echo t('What visitors chose') ?></h3>
     <table class="table table-striped mb-4">
         <thead>

@@ -9,7 +9,7 @@ Banner statistics.
 ### Added
 
 - Statistics dashboard page (`/dashboard/cookie_manager/statistics`): how often the banner is shown, and how many visitors accept all, choose some, or reject all, plus how many change their choice later. Date range, per-day table, and breakdowns by language and policy version.
-- Public `POST /cookie-manager/event` endpoint and the `cmkStats` table. Only anonymous daily counts are stored: no cookie, IP address, user agent or visitor identifier.
+- Public `POST /cookie-manager/event` endpoint and the `cmkStats` table. Only anonymous daily counts are stored: no cookie, IP address, user agent or visitor identifier is kept with the statistics (the rate limiter briefly caches a hash of the IP address, as the consent endpoint does).
 - The banner counts one display per browser tab session per policy version; crawlers and headless browsers are not counted.
 
 ### Fixed
@@ -24,6 +24,7 @@ Banner statistics.
 ### Upgrade notes
 
 - Run **Update** for the package in the dashboard to create the `cmkStats` table and the Statistics page. Choices made before the upgrade are not counted.
+- Until **Update** has been run, events are quietly ignored instead of being logged as errors.
 - Statistics are anonymous aggregate counts. The only browser-side item is a `sessionStorage` key (`cmk_shown_<policy version>`) that stops the same tab session counting twice; it is cleared when the tab closes.
 
 ## 0.1.0

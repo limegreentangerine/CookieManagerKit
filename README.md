@@ -34,7 +34,13 @@ and sharing.
 
 `Dashboard > Cookie Manager > Statistics` shows how visitors respond to the banner for a date range: banner displays, accept all, custom and reject all (with counts and shares), the response rate, and how many people changed their choice later, by day, language and policy version.
 
-Counting is anonymous. Each event adds one to a daily counter (`cmkStats`); no cookie, IP address, user agent or visitor identifier is stored. A banner display is counted once per browser tab session per policy version, and the days are UTC. Crawlers and headless browsers are not counted. Mention it in your own privacy notice if you describe your cookie tooling.
+Counting is anonymous. Each event adds one to a daily counter (`cmkStats`); no cookie, IP address, user agent or visitor identifier is stored in the statistics. As with the consent endpoint, the rate limiter briefly (about two minutes) keeps a hash of the visitor's IP address in Concrete's cache so it can limit requests; it is not kept with the statistics. In the browser, a `sessionStorage` key (`cmk_shown_<policy version>`) is written when the banner first shows, so the same tab session counts only once; it is not a cookie and is cleared when the tab closes. Mention these in your own privacy notice if you describe your cookie tooling.
+
+A banner display is counted once per browser tab session per policy version, and the days are UTC. If a browser blocks `sessionStorage` (for example some private modes), every page view that shows the banner is counted, which inflates the display count. Crawlers and headless browsers are not counted.
+
+The event endpoint allows 120 requests a minute per client IP address, as seen by Concrete. Behind a reverse proxy or CDN, configure Concrete's trusted proxies so visitors are not all seen as one address; otherwise counts beyond the limit are silently dropped. The response rate is approximate (first choices divided by displays) and can pass 100%.
+
+After uploading a new version, run **Update** for the package in the dashboard. Until then the statistics table does not exist and events are quietly ignored.
 
 ## Blocking a script
 

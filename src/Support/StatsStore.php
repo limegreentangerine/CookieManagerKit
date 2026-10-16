@@ -2,7 +2,9 @@
 
 namespace CookieManagerKit\Support;
 
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\DBAL\Exception\TableNotFoundException;
 
 /**
  * Reads and writes the cmkStats counters with plain SQL. The write is one atomic upsert (never read-then-write),
@@ -10,13 +12,23 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 final class StatsStore
 {
-    public static function increment(string $day, string $locale, int $version, string $metric): void
+    /**
+     * MySQL/MariaDB only (ON DUPLICATE KEY), which is what Concrete runs on. Until an admin has run the package
+     * Update the table does not exist; that window is swallowed so a busy site does not flood its log, while any
+     * other database error still surfaces and is logged by the caller.
+     */
+    public static function increment(string $day, string $locale, int $version, string $metric, ?Connection $connection = null): void
     {
-        app(EntityManagerInterface::class)->getConnection()->executeStatement(
-            'INSERT INTO cmkStats (statDay, locale, policyVersion, metric, total) VALUES (?, ?, ?, ?, 1)
-             ON DUPLICATE KEY UPDATE total = total + 1',
-            [$day, $locale, $version, $metric],
-        );
+        $connection ??= app(EntityManagerInterface::class)->getConnection();
+
+        try {
+            $connection->executeStatement(
+                'INSERT INTO cmkStats (statDay, locale, policyVersion, metric, total) VALUES (?, ?, ?, ?, 1)
+                 ON DUPLICATE KEY UPDATE total = total + 1',
+                [$day, $locale, $version, $metric],
+            );
+        } catch (TableNotFoundException) {
+        }
     }
 
     /**
