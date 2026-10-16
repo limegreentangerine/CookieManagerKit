@@ -116,17 +116,17 @@ Alerts are the counts on the Scanner page plus an optional **plain-text** email 
 
 ## Consent log and privacy
 
-`Dashboard > Cookie Manager > Consent Log` records every choice a visitor makes, so you can show when and how consent was given. Each entry stores a random consent ID, the policy version, the categories chosen, what triggered the choice (for example the banner, the settings panel or a re-consent), the locale, a coarse browser and device bucket such as `Chrome/desktop`, and the time. The consent ID is kept in the visitor's `cmk_consent` cookie (as `i`), so a later change by the same browser adds an entry to the same record. No IP address, region or raw user agent is stored.
+`Dashboard > Cookie Manager > Consent Log` records every choice a visitor makes, so you can show when and how consent was given. Each entry stores a random consent ID, the policy version, the categories chosen, what triggered the choice (for example the banner, the settings panel or a re-consent), the locale, a coarse browser and device bucket such as `Chrome/desktop`, and the time. The consent ID is kept in the visitor's `cmk_consent` cookie (as `i`), so a later change by the same browser adds an entry to the same record. No IP address, region or raw user agent is stored in the consent log (the rate limiter still briefly keeps a hash of the IP address in Concrete's cache, as described under Statistics).
 
 Filter the log by date, trigger, policy version, category or consent ID, and download a CSV (it includes the re-consent reason). Mention the log in your own privacy notice.
 
-The scheduled task **Purge old consent records** (`cmk_purge_consent_log`) deletes a browser's history 24 months after its last choice by default. Change the number of months on the Banner page. The task is registered when the package is installed or updated, so run **Update** after upgrading.
+The scheduled task **Purge old consent records** (`cmk_purge_consent_log`) deletes a browser's history 24 months after its last choice by default. Change the number of months (1 to 120) on the Banner page. The task is registered when the package is installed or updated, so run **Update** after upgrading.
 
 "Ask every visitor again" now needs a reason. It is kept in a history on the Banner page and in the log export. Approving a scanner finding that adds a service to an optional category offers a one-click "Ask visitors again"; it is never automatic.
 
 ### Google Consent Mode v2
 
-Off by default (Banner page). When on, every signal starts denied and updates from the visitor's choice: analytics sets `analytics_storage`; marketing sets `ad_storage`, `ad_user_data` and `ad_personalization`; preferences sets `functionality_storage` and `personalization_storage`.
+Off by default (Banner page). When on, every signal starts denied except `security_storage`, which is always granted, and the rest update from the visitor's choice: necessary sets `security_storage` (always granted); analytics sets `analytics_storage`; marketing sets `ad_storage`, `ad_user_data` and `ad_personalization`; preferences sets `functionality_storage` and `personalization_storage`.
 
 ### Default model and Global Privacy Control
 
