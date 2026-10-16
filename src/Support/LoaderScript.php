@@ -32,10 +32,10 @@ final class LoaderScript
      * The boot data the loader reads. `nonce` tells the loader the page carries a CSP nonce, so it only activates
      * inert scripts bearing its own; it is true only when inline() will actually emit the nonce attribute.
      *
-     * @param  list<string>                                                                         $categories
-     * @return array{v: int, cats: list<string>, days: int, cfg: string, post: string, nonce: bool}
+     * @param  list<string>                                                                                        $categories
+     * @return array{v: int, cats: list<string>, days: int, cfg: string, post: string, event: string, nonce: bool}
      */
-    public static function boot(int $version, array $categories, int $lifetimeDays, string $configUrl, string $postUrl, ?string $nonce): array
+    public static function boot(int $version, array $categories, int $lifetimeDays, string $configUrl, string $postUrl, ?string $nonce, string $eventUrl = ''): array
     {
         return [
             'v' => $version,
@@ -43,6 +43,7 @@ final class LoaderScript
             'days' => $lifetimeDays,
             'cfg' => $configUrl,
             'post' => $postUrl,
+            'event' => $eventUrl,
             'nonce' => self::isValidNonce($nonce),
         ];
     }

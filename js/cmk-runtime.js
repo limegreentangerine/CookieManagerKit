@@ -228,6 +228,63 @@
 		}
 	}
 
+	function track(name) {
+		if (!boot.event || typeof w.fetch !== 'function') {
+			return;
+		}
+
+		try {
+			w.fetch(boot.event, {
+				method: 'POST',
+				credentials: 'same-origin',
+				keepalive: true,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					v: boot.v,
+					e: name,
+					l: String((state.config && state.config.locale) || '')
+				})
+			}).catch(function () {
+				/* statistics are best effort and never affect the visitor's choice */
+			});
+		} catch (e) {
+			/* same */
+		}
+	}
+
+	// Once per tab session and policy version. Blocked storage means the page view is simply counted.
+	function trackShown() {
+		var key = 'cmk_shown_' + boot.v;
+
+		try {
+			if (w.sessionStorage.getItem(key)) {
+				return;
+			}
+
+			w.sessionStorage.setItem(key, '1');
+		} catch (e) {
+			/* storage blocked */
+		}
+
+		track('shown');
+	}
+
+	function choiceEvent(previous, saved, categories) {
+		if (previous) {
+			return 'changed';
+		}
+
+		if (saved.length === 1) {
+			return 'reject_all';
+		}
+
+		return categories.every(function (category) {
+			return saved.indexOf(category.handle) !== -1;
+		})
+			? 'accept_all'
+			: 'custom';
+	}
+
 	function close(restoreFocus) {
 		if (state.root && state.root.parentNode) {
 			state.root.parentNode.removeChild(state.root);
@@ -263,6 +320,7 @@
 			});
 
 		post(saved);
+		track(choiceEvent(previous, saved, validCategories(state.config)));
 		close(true);
 
 		if (withdrew) {
@@ -485,6 +543,7 @@
 		mountWidget(config);
 
 		if (!cmk.get()) {
+			trackShown();
 			// The centred modal traps Tab (aria-modal), so it holds focus from the start; other positions do not.
 			show(config, false, (config.style && config.style.position) === 'center-modal');
 		}

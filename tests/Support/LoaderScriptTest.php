@@ -51,15 +51,27 @@ final class LoaderScriptTest extends TestCase
 
     public function testBootBuildsExactlyTheKeysTheLoaderReads(): void
     {
-        $boot = LoaderScript::boot(3, ['necessary', 'analytics'], 180, '/cfg.json?v=a', '/post', 'abcDEF123456==');
+        $boot = LoaderScript::boot(3, ['necessary', 'analytics'], 180, '/cfg.json?v=a', '/post', 'abcDEF123456==', '/event');
 
-        $this->assertSame(['v', 'cats', 'days', 'cfg', 'post', 'nonce'], array_keys($boot));
+        $this->assertSame(['v', 'cats', 'days', 'cfg', 'post', 'event', 'nonce'], array_keys($boot));
         $this->assertSame(3, $boot['v']);
         $this->assertSame(['necessary', 'analytics'], $boot['cats']);
         $this->assertSame(180, $boot['days']);
         $this->assertSame('/cfg.json?v=a', $boot['cfg']);
         $this->assertSame('/post', $boot['post']);
+        $this->assertSame('/event', $boot['event']);
         $this->assertTrue($boot['nonce']);
+    }
+
+    public function testBootEventUrlDefaultsToEmptyAndIsEncoded(): void
+    {
+        $this->assertSame('', LoaderScript::boot(1, [], 1, '', '', null)['event']);
+
+        $json = Output::json(LoaderScript::boot(1, [], 1, '', '', null, '"><script>x</script>'));
+
+        foreach (['<', '>', '&', "'"] as $char) {
+            $this->assertStringNotContainsString($char, $json);
+        }
     }
 
     public function testBootNonceFlagIsTrueOnlyForAValidNonce(): void
