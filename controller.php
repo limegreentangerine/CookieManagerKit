@@ -6,6 +6,7 @@ use Concrete\Core\Entity\Package;
 use ClassKit\Package\PackageController;
 use Doctrine\ORM\EntityManagerInterface;
 use CookieManagerKit\Events\ConsentManager;
+use CookieManagerKit\Scan\ClassificationStore;
 use Concrete\Core\Support\Facade\{Events, Route};
 use CookieManagerKit\Support\{Catalog, Installer};
 use ClassKit\Package\Traits\{AttributeTrait, BlockTrait, PageTrait};
@@ -142,7 +143,10 @@ class Controller extends PackageController
         $this->addSinglePage('/dashboard/cookie_manager/appearance', $pkg, t('Appearance'), t('Colours, position and layout'));
         $this->addSinglePage('/dashboard/cookie_manager/statistics', $pkg, t('Statistics'), t('How visitors respond to the banner'));
 
-        Installer::seed(app(EntityManagerInterface::class), Catalog::defaultLocale());
+        $em = app(EntityManagerInterface::class);
+
+        Installer::seed($em, Catalog::defaultLocale());
+        (new ClassificationStore($em))->syncBundled();
     }
 
     public function registerRoutes(): void
