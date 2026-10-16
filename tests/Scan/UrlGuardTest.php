@@ -125,6 +125,30 @@ final class UrlGuardTest extends TestCase
     /**
      * @return array<string, array{string}>
      */
+    public static function privateAddresses(): array
+    {
+        return [
+            'loopback' => ['127.0.0.1'],
+            'private 10' => ['10.0.0.1'],
+            'private 172' => ['172.20.0.5'],
+            'private 192' => ['192.168.1.1'],
+            'shared 100.64' => ['100.64.0.1'],
+            'ietf 192.0.0' => ['192.0.0.8'],
+            'benchmark 198.18' => ['198.18.0.1'],
+        ];
+    }
+
+    #[DataProvider('privateAddresses')]
+    public function testRefusesNonPublicSiteAddressesByDefault(string $ip): void
+    {
+        $this->expectException(UnsafeUrl::class);
+
+        self::guard('https://example.com', $ip);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
     public static function developmentAddresses(): array
     {
         return [
@@ -136,9 +160,43 @@ final class UrlGuardTest extends TestCase
     }
 
     #[DataProvider('developmentAddresses')]
-    public function testAllowsALocalSiteBecauseItIsTheSitesOwnAddress(string $ip): void
+    public function testThePrivateNetworkFlagAllowsLoopbackAndRfc1918(string $ip): void
     {
-        $this->assertSame('example.com:443:' . $ip, self::guard('https://example.com', $ip)->curlResolve());
+        $guard = UrlGuard::forSite('https://example.com', static fn(string $host): string => $ip, true);
+
+        $this->assertSame('example.com:443:' . $ip, $guard->curlResolve());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function neverAllowed(): array
+    {
+        return [
+            'metadata' => ['169.254.169.254'],
+            'multicast' => ['224.0.0.1'],
+            'reserved' => ['240.0.0.1'],
+            'this network' => ['0.0.0.0'],
+            'shared 100.64' => ['100.64.0.1'],
+            'benchmark' => ['198.18.0.1'],
+            'ipv6 loopback' => ['::1'],
+            'mapped' => ['::ffff:127.0.0.1'],
+        ];
+    }
+
+    #[DataProvider('neverAllowed')]
+    public function testThePrivateNetworkFlagNeverAllowsOtherRanges(string $ip): void
+    {
+        $this->expectException(UnsafeUrl::class);
+
+        UrlGuard::forSite('https://example.com', static fn(string $host): string => $ip, true);
+    }
+
+    public function testABaseUrlWithPortZeroIsRefused(): void
+    {
+        $this->expectException(UnsafeUrl::class);
+
+        self::guard('https://example.com:0');
     }
 
     public function testASiteThatDoesNotResolveIsRefused(): void
@@ -179,7 +237,7 @@ final class UrlGuardTest extends TestCase
 
     public function testAnIpLiteralSiteIsPinnedToItself(): void
     {
-        $guard = UrlGuard::forSite('http://192.168.1.20:8080', static fn(string $host): string => $host);
+        $guard = UrlGuard::forSite('http://192.168.1.20:8080', static fn(string $host): string => $host, true);
 
         $this->assertSame('192.168.1.20:8080:192.168.1.20', $guard->curlResolve());
         $guard->check('http://192.168.1.20:8080/x');

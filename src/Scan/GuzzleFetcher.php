@@ -2,8 +2,13 @@
 
 namespace CookieManagerKit\Scan;
 
+use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Handler\Proxy;
 use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Handler\CurlHandler;
 use Psr\Http\Message\ResponseInterface;
+use GuzzleHttp\Handler\CurlMultiHandler;
 
 /**
  * Fetches one page for the crawler. The guard runs before every request; redirects are never followed (a redirect
@@ -22,21 +27,107 @@ final class GuzzleFetcher implements Fetcher
         private readonly UrlGuard $guard,
         private readonly int $maxBytes = self::MAX_BYTES,
         private readonly int $timeout = 8,
+        private readonly bool $allowUnpinnedTransportForTests = false,
     ) {}
+
+    /**
+     * Fails closed: the address pin only works through cURL's CURLOPT_RESOLVE, so any other transport would resolve
+     * the host again and could be steered by DNS.
+     *
+     * @throws FetchFailed
+     */
+    private function assertPinned(): void
+    {
+        if ($this->allowUnpinnedTransportForTests) {
+            return;
+        }
+
+        if (!defined('CURLOPT_RESOLVE') || !$this->usesCurl()) {
+            throw new FetchFailed('The request cannot be pinned to the resolved address, so it was not sent.');
+        }
+    }
+
+    private function usesCurl(): bool
+    {
+        return $this->client instanceof Client && self::isCurl($this->client->getConfig('handler'));
+    }
+
+    /**
+     * Whether every route a request can take through this handler ends in a cURL handler. The TLS-fallback and
+     * streaming branches of Guzzle's default chain are only taken for the `crypto_method` and `stream` options, and
+     * `stream` is forced off in fetch().
+     */
+    private static function isCurl(mixed $handler): bool
+    {
+        if ($handler instanceof CurlHandler || $handler instanceof CurlMultiHandler) {
+            return true;
+        }
+
+        if ($handler instanceof HandlerStack) {
+            $inner = (new \ReflectionProperty(HandlerStack::class, 'handler'))->getValue($handler);
+
+            return self::isCurl($inner);
+        }
+
+        if ($handler instanceof \Closure) {
+            $reflection = new \ReflectionFunction($handler);
+
+            if ($reflection->getClosureScopeClass()?->getName() !== Proxy::class) {
+                return false;
+            }
+
+            $used = $reflection->getClosureUsedVariables();
+            $routes = array_intersect_key($used, ['default' => true, 'sync' => true]);
+
+            if ($routes === []) {
+                return false;
+            }
+
+            foreach ($routes as $route) {
+                if (!self::isCurl($route)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static function assertIdentity(ResponseInterface $response): void
+    {
+        foreach ($response->getHeader('Content-Encoding') as $line) {
+            foreach (explode(',', $line) as $coding) {
+                $coding = strtolower(trim($coding));
+
+                if ($coding !== '' && $coding !== 'identity') {
+                    throw new FetchFailed('The response is compressed, which the scanner does not accept.');
+                }
+            }
+        }
+    }
 
     public function fetch(string $url): FetchResult
     {
         $this->guard->check($url);
+        $this->assertPinned();
 
         $options = [
             'allow_redirects' => false,
             'http_errors' => false,
             // An environment proxy would carry the request to a host of its choosing, bypassing the pinned address.
             'proxy' => '',
+            'verify' => true,
+            'stream' => false,
+            // A compressed body can expand far beyond the cap (gzip bomb), so none is asked for or decoded.
+            'decode_content' => false,
             'timeout' => $this->timeout,
             'connect_timeout' => $this->timeout,
-            'headers' => ['User-Agent' => 'CookieManagerKit-Scanner/1.0', 'Accept' => 'text/html,application/xhtml+xml'],
+            'headers' => ['User-Agent' => 'CookieManagerKit-Scanner/1.0', 'Accept' => 'text/html,application/xhtml+xml', 'Accept-Encoding' => 'identity'],
             'on_headers' => function (ResponseInterface $response): void {
+                self::assertIdentity($response);
+
                 if ((int) $response->getHeaderLine('Content-Length') > $this->maxBytes) {
                     throw new FetchFailed('The response is larger than the scan limit.');
                 }
@@ -58,6 +149,14 @@ final class GuzzleFetcher implements Fetcher
             throw $e;
         } catch (\Throwable $e) {
             throw new FetchFailed('The request failed (' . $e::class . ').', 0, $e);
+        }
+
+        self::assertIdentity($response);
+
+        $size = $response->getBody()->getSize();
+
+        if ($size !== null && $size > $this->maxBytes) {
+            throw new FetchFailed('The response is larger than the scan limit.');
         }
 
         $body = (string) $response->getBody();

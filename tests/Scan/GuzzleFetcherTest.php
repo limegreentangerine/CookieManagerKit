@@ -30,7 +30,7 @@ final class GuzzleFetcherTest extends TestCase
         $stack->push(Middleware::history($this->history));
         $guard = UrlGuard::forSite('https://example.com', static fn(string $host): string => '203.0.113.7');
 
-        return new GuzzleFetcher(new Client(['handler' => $stack]), $guard, $maxBytes);
+        return new GuzzleFetcher(new Client(['handler' => $stack]), $guard, $maxBytes, 8, true);
     }
 
     public function testReturnsStatusLowerCasedHeadersAndBody(): void
@@ -122,6 +122,73 @@ final class GuzzleFetcherTest extends TestCase
             } catch (UnsafeUrl) {
                 $this->assertCount(0, $this->history);
             }
+        }
+    }
+
+    public function testAskForAndAcceptOnlyUncompressedBodies(): void
+    {
+        $fetcher = $this->fetcher([new Response(200, ['Content-Type' => 'text/html'], 'ok')]);
+
+        $fetcher->fetch('https://example.com/');
+
+        $this->assertSame('identity', $this->history[0]['request']->getHeaderLine('Accept-Encoding'));
+        $this->assertFalse($this->history[0]['options']['decode_content']);
+        $this->assertTrue($this->history[0]['options']['verify']);
+        $this->assertFalse($this->history[0]['options']['stream']);
+    }
+
+    public function testACompressedResponseIsRefused(): void
+    {
+        foreach (['gzip', 'deflate', 'br', 'identity, gzip'] as $coding) {
+            $fetcher = $this->fetcher([new Response(200, ['Content-Type' => 'text/html', 'Content-Encoding' => $coding], 'x')]);
+
+            try {
+                $fetcher->fetch('https://example.com/');
+                $this->fail('accepted ' . $coding);
+            } catch (FetchFailed) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function testAnIdentityEncodedResponseIsAccepted(): void
+    {
+        $fetcher = $this->fetcher([new Response(200, ['Content-Type' => 'text/html', 'Content-Encoding' => 'identity'], 'ok')]);
+
+        $this->assertSame('ok', $fetcher->fetch('https://example.com/')->body);
+    }
+
+    public function testFailsClosedWhenTheTransportCannotPinTheAddress(): void
+    {
+        $guard = UrlGuard::forSite('https://example.com', static fn(string $host): string => '203.0.113.7');
+        $client = new Client(['handler' => HandlerStack::create(new MockHandler([new Response(200, [], 'x')]))]);
+
+        $this->expectException(FetchFailed::class);
+
+        (new GuzzleFetcher($client, $guard))->fetch('https://example.com/');
+    }
+
+    public function testFailsClosedForAStreamHandler(): void
+    {
+        $guard = UrlGuard::forSite('https://example.com', static fn(string $host): string => '203.0.113.7');
+        $client = new Client(['handler' => HandlerStack::create(new \GuzzleHttp\Handler\StreamHandler())]);
+
+        $this->expectException(FetchFailed::class);
+
+        (new GuzzleFetcher($client, $guard))->fetch('https://example.com/');
+    }
+
+    public function testAcceptsTheCurlHandlerAndGuzzlesDefaultChain(): void
+    {
+        if (!function_exists('curl_multi_exec')) {
+            $this->markTestSkipped('ext-curl is not available.');
+        }
+
+        $guard = UrlGuard::forSite('https://example.com', static fn(string $host): string => '203.0.113.7');
+        $probe = new \ReflectionMethod(GuzzleFetcher::class, 'usesCurl');
+
+        foreach ([new Client(), new Client(['handler' => HandlerStack::create(new \GuzzleHttp\Handler\CurlHandler())])] as $client) {
+            $this->assertTrue($probe->invoke(new GuzzleFetcher($client, $guard)));
         }
     }
 }
