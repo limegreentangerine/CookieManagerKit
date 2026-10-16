@@ -6,6 +6,8 @@ namespace CookieManagerKit\Tests\Scan;
 
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\DBAL\Driver\DriverException;
 use Doctrine\Persistence\ObjectRepository;
@@ -22,6 +24,41 @@ final class ClassificationStoreTest extends TestCase
         $em->method('transactional')->willReturnCallback(static fn(callable $work): mixed => $work());
 
         return $em;
+    }
+
+    private function sqlite(): Connection
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
+        $connection->executeStatement('CREATE TABLE cmkClassificationEntries (id INTEGER PRIMARY KEY AUTOINCREMENT, kind VARCHAR(16) NOT NULL, pattern VARCHAR(128) NOT NULL, categoryHandle VARCHAR(32) NOT NULL, vendor VARCHAR(255) NOT NULL, description VARCHAR(500) NOT NULL, duration VARCHAR(64) NOT NULL, origin VARCHAR(16) NOT NULL)');
+
+        return $connection;
+    }
+
+    private function storeOn(Connection $connection): ClassificationStore
+    {
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getTableName')->willReturn('cmkClassificationEntries');
+        $metadata->method('getColumnName')->willReturnArgument(0);
+        $em = $this->manager();
+        $em->method('getConnection')->willReturn($connection);
+        $em->method('getClassMetadata')->willReturn($metadata);
+        $em->expects($this->never())->method('persist');
+        $em->expects($this->never())->method('flush');
+
+        return new ClassificationStore($em);
+    }
+
+    private static function row(string $pattern): array
+    {
+        return ['kind' => 'cookie', 'pattern' => $pattern, 'category' => 'analytics', 'vendor' => 'V', 'description' => 'd', 'duration' => '1'];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function patterns(Connection $connection, string $origin): array
+    {
+        return array_map('strval', $connection->fetchFirstColumn('SELECT pattern FROM cmkClassificationEntries WHERE origin = ? ORDER BY pattern', [$origin]));
     }
 
     public function testEntriesAreReturnedAsPlainArrays(): void
@@ -60,39 +97,61 @@ final class ClassificationStoreTest extends TestCase
         $this->assertSame([], (new ClassificationStore($em))->entries());
     }
 
-    public function testReplaceOriginDeletesThatOriginAndStoresTheRowsInOneTransaction(): void
+    public function testReplaceOriginSwapsOnlyThatOriginAndNeverTouchesTheEntityManagerUnitOfWork(): void
     {
-        $connection = $this->createMock(Connection::class);
-        $connection->expects($this->once())->method('executeStatement')->with($this->stringContains('DELETE FROM cmkClassificationEntries WHERE origin = ?'), ['refreshed']);
-        $em = $this->manager();
-        $em->method('getConnection')->willReturn($connection);
-        $persisted = [];
-        $em->expects($this->exactly(2))->method('persist')->willReturnCallback(function (ClassificationEntry $entry) use (&$persisted): void {
-            $persisted[] = $entry;
-        });
-        $em->expects($this->once())->method('flush');
+        $connection = $this->sqlite();
+        $store = $this->storeOn($connection);
+        $store->replaceOrigin('refreshed', [self::row('old')]);
+        $connection->insert('cmkClassificationEntries', ['kind' => 'cookie', 'pattern' => 'mine', 'categoryHandle' => 'analytics', 'vendor' => '', 'description' => '', 'duration' => '', 'origin' => 'override']);
 
-        (new ClassificationStore($em))->replaceOrigin('refreshed', [
-            ['kind' => 'cookie', 'pattern' => 'a', 'category' => 'analytics', 'vendor' => 'V', 'description' => 'd', 'duration' => '1'],
-            ['kind' => 'host', 'pattern' => 'b.example.com', 'category' => 'marketing', 'vendor' => 'W', 'description' => '', 'duration' => ''],
-        ]);
+        $store->replaceOrigin('refreshed', [self::row('a'), self::row('b')]);
 
-        $this->assertSame(['refreshed', 'refreshed'], array_map(static fn(ClassificationEntry $e): string => $e->getOrigin(), $persisted));
-        $this->assertSame(['a', 'b.example.com'], array_map(static fn(ClassificationEntry $e): string => $e->getPattern(), $persisted));
+        $this->assertSame(['a', 'b'], self::patterns($connection, 'refreshed'));
+        $this->assertSame(['mine'], self::patterns($connection, 'override'));
     }
 
-    public function testSyncBundledLoadsTheShippedBaseline(): void
+    public function testAFailureMidwayKeepsThePreviousRows(): void
     {
-        $em = $this->manager();
-        $em->method('getConnection')->willReturn($this->createMock(Connection::class));
-        $count = 0;
-        $em->method('persist')->willReturnCallback(static function () use (&$count): void {
-            $count++;
-        });
+        $connection = $this->sqlite();
+        $store = $this->storeOn($connection);
+        $store->replaceOrigin('refreshed', [self::row('keep')]);
+        $bad = self::row('bad');
+        $bad['kind'] = ['not a string'];
 
-        (new ClassificationStore($em))->syncBundled();
+        try {
+            $store->replaceOrigin('refreshed', [self::row('new'), $bad]);
+            $this->fail('accepted a broken row');
+        } catch (\Throwable) {
+            $this->addToAssertionCount(1);
+        }
 
-        $this->assertGreaterThan(60, $count);
+        $this->assertSame(['keep'], self::patterns($connection, 'refreshed'));
+    }
+
+    public function testOverridesAndUnknownOriginsCanNeverBeReplaced(): void
+    {
+        $store = $this->storeOn($this->sqlite());
+
+        foreach (['override', 'nonsense', ''] as $origin) {
+            try {
+                $store->replaceOrigin($origin, []);
+                $this->fail('replaced ' . $origin);
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function testSyncBundledLoadsTheShippedBaselineAndKeepsOtherOrigins(): void
+    {
+        $connection = $this->sqlite();
+        $store = $this->storeOn($connection);
+        $store->replaceOrigin('refreshed', [self::row('r')]);
+
+        $store->syncBundled();
+
+        $this->assertGreaterThan(60, count(self::patterns($connection, 'bundled')));
+        $this->assertSame(['r'], self::patterns($connection, 'refreshed'));
     }
 
     public function testSyncBundledRefusesAnInvalidFileAndTouchesNothing(): void

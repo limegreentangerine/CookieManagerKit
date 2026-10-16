@@ -8,6 +8,9 @@ use CookieManagerKit\Entity\ClassificationEntry;
 /**
  * Replaces the `refreshed` classification rows with a validated download. Nothing is stored unless the whole file
  * passes; any failure leaves the previous rows exactly as they were.
+ *
+ * Whether a refresh is allowed at all (Settings::classificationRefresh) is the caller's responsibility: this class
+ * does not check it.
  */
 final class Refresher
 {

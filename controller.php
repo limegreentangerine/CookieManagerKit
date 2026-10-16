@@ -146,6 +146,7 @@ class Controller extends PackageController
         $em = app(EntityManagerInterface::class);
 
         Installer::seed($em, Catalog::defaultLocale());
+        // Deliberately not caught: a failed seed must fail the install or upgrade loudly.
         (new ClassificationStore($em))->syncBundled();
     }
 

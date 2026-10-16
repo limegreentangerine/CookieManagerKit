@@ -88,4 +88,11 @@ final class GithubSnapshotTest extends TestCase
 
         $this->snapshot([new \GuzzleHttp\Exception\ConnectException('down', new \GuzzleHttp\Psr7\Request('GET', GithubSnapshot::URL))])->fetch();
     }
+
+    public function testTheDownloadGoesThroughACappedSink(): void
+    {
+        $this->snapshot([new Response(200, [], 'ok')])->fetch();
+
+        $this->assertInstanceOf(\CookieManagerKit\Scan\CappedSink::class, $this->history[0]['options']['sink']);
+    }
 }

@@ -38,6 +38,8 @@ final class GithubSnapshot implements SnapshotSource
             'proxy' => '',
             'verify' => true,
             'stream' => false,
+            // A hard bound: the sink throws on the write that would pass the cap, whatever the transport reports.
+            'sink' => new CappedSink(self::MAX_BYTES),
             // A compressed body can expand far beyond the cap (gzip bomb), so none is asked for or decoded.
             'decode_content' => false,
             'timeout' => 20,

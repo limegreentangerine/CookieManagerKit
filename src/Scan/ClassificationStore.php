@@ -42,18 +42,41 @@ class ClassificationStore
     }
 
     /**
+     * Replaces every row of one origin. The whole replacement runs on the DBAL connection in one transaction, so a
+     * failure rolls back and the previous rows stay, and the EntityManager is never involved (a failed flush would
+     * close it for the rest of the request). Overrides can never be replaced here.
+     *
      * @param list<array{kind: string, pattern: string, category: string, vendor: string, description: string, duration: string}> $rows
+     *
+     * @throws \InvalidArgumentException for any origin other than bundled or refreshed
      */
     public function replaceOrigin(string $origin, array $rows): void
     {
-        $this->em->transactional(function () use ($origin, $rows): void {
-            $this->em->getConnection()->executeStatement('DELETE FROM cmkClassificationEntries WHERE origin = ?', [$origin]);
+        if (!in_array($origin, [ClassificationEntry::BUNDLED, ClassificationEntry::REFRESHED], true)) {
+            throw new \InvalidArgumentException('Only bundled and refreshed classification rows can be replaced.');
+        }
+
+        $metadata = $this->em->getClassMetadata(ClassificationEntry::class);
+        $table = $metadata->getTableName();
+        $column = static fn(string $field): string => $metadata->getColumnName($field);
+        $connection = $this->em->getConnection();
+
+        $connection->transactional(function () use ($connection, $table, $column, $origin, $rows): void {
+            $connection->executeStatement('DELETE FROM ' . $table . ' WHERE ' . $column('origin') . ' = ?', [$origin]);
 
             foreach ($rows as $row) {
-                $this->em->persist((new ClassificationEntry())->define($row['kind'], $row['pattern'], $row['category'], $row['vendor'], $row['description'], $row['duration'], $origin));
-            }
+                $entry = (new ClassificationEntry())->define($row['kind'], $row['pattern'], $row['category'], $row['vendor'], $row['description'], $row['duration'], $origin);
 
-            $this->em->flush();
+                $connection->insert($table, [
+                    $column('kind') => $entry->getKind(),
+                    $column('pattern') => $entry->getPattern(),
+                    $column('categoryHandle') => $entry->getCategoryHandle(),
+                    $column('vendor') => $entry->getVendor(),
+                    $column('description') => $entry->getDescription(),
+                    $column('duration') => $entry->getDuration(),
+                    $column('origin') => $entry->getOrigin(),
+                ]);
+            }
         });
     }
 
