@@ -77,4 +77,22 @@ final class DoctrineConsentLogStoreTest extends TestCase
         $this->assertInstanceOf(ConsentLogEntry::class, $persisted[0]);
         $this->assertEquals($now, $subject->getDateUpdated());
     }
+
+    public function testAnUnknownWellFormedIdGetsANewSubjectAndNeverReusesTheClaimedId(): void
+    {
+        $claimed = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+        [$em, $persisted] = $this->em(null);
+
+        $id = (new DoctrineConsentLogStore($em))->append(
+            new ConsentChoice(4, ['necessary'], 'reject_all', 'en_GB', 'Other/unknown', $claimed),
+            new \DateTimeImmutable('2026-10-16 12:00:00 UTC'),
+        );
+
+        $this->assertNotSame($claimed, $id);
+        $this->assertSame('3f2504e0-4f89-11d3-9a0c-0305e82c3301', $id);
+        $classes = array_map(static fn(object $o): string => $o::class, $persisted->getArrayCopy());
+        $this->assertSame([ConsentSubject::class, ConsentLogEntry::class], $classes);
+        $this->assertSame($persisted[0], $persisted[1]->getSubject());
+        $this->assertSame($id, $persisted[0]->getId());
+    }
 }
