@@ -154,6 +154,7 @@ class Controller extends PackageController
         $this->addSinglePage('/dashboard/cookie_manager/scanner', $pkg, t('Scanner'), t('Scan the site for cookies and scripts'));
         $this->addSinglePage('/dashboard/cookie_manager/findings', $pkg, t('Findings'), t('Review what the scanner found'));
         $this->addSinglePage('/dashboard/cookie_manager/scan_settings', $pkg, t('Scanner Settings'), t('Crawl limits, alerts and classification data'));
+        $this->addSinglePage('/dashboard/cookie_manager/consent_log', $pkg, t('Consent Log'), t('Who consented to what, and when'));
 
         $em = app(EntityManagerInterface::class);
 
