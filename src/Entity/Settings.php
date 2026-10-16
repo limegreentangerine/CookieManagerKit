@@ -120,6 +120,21 @@ class Settings extends UpdatedGuidEntity
      */
     protected $classificationRefresh = false;
 
+    /**
+     * @ORM\Column(type="integer", nullable=false, options={"default": 24, "comment": "Months a browser's consent history is kept after its last decision"})
+     */
+    protected $consentLogRetentionMonths = 24;
+
+    /**
+     * @ORM\Column(type="boolean", nullable=false, options={"default": false, "comment": "Emit Google Consent Mode v2 signals"})
+     */
+    protected $consentMode = false;
+
+    /**
+     * @ORM\Column(type="string", length=8, nullable=false, options={"default": "opt_in", "comment": "opt_in or opt_out"})
+     */
+    protected $defaultModel = 'opt_in';
+
     private static function clampInt(mixed $value, int $min, int $max, int $default): int
     {
         $number = is_int($value) || (is_string($value) && preg_match('/^-?\d{1,9}\z/', trim($value)) === 1) ? (int) $value : $default;
@@ -364,6 +379,42 @@ class Settings extends UpdatedGuidEntity
     public function setClassificationRefreshEnabled($value): self
     {
         $this->classificationRefresh = (bool) $value;
+
+        return $this;
+    }
+
+    public function getConsentLogRetentionMonths(): int
+    {
+        return self::clampInt($this->consentLogRetentionMonths, 1, 120, 24);
+    }
+
+    public function setConsentLogRetentionMonths($value): self
+    {
+        $this->consentLogRetentionMonths = self::clampInt($value, 1, 120, 24);
+
+        return $this;
+    }
+
+    public function isConsentModeEnabled(): bool
+    {
+        return (bool) $this->consentMode;
+    }
+
+    public function setConsentModeEnabled($value): self
+    {
+        $this->consentMode = (bool) $value;
+
+        return $this;
+    }
+
+    public function getDefaultModel(): string
+    {
+        return $this->defaultModel === 'opt_out' ? 'opt_out' : 'opt_in';
+    }
+
+    public function setDefaultModel($value): self
+    {
+        $this->defaultModel = $value === 'opt_out' ? 'opt_out' : 'opt_in';
 
         return $this;
     }

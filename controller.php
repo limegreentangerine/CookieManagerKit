@@ -103,6 +103,9 @@ class Controller extends PackageController
      * @var array
      */
     protected $databaseTables = [
+        'cmkConsentLog',
+        'cmkConsentSubjects',
+        'cmkPolicyChanges',
         'cmkScanFindings',
         'cmkScanRuns',
         'cmkClassificationEntries',
