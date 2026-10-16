@@ -14,7 +14,9 @@ final class Host
             return null;
         }
 
-        $host = strtolower(rtrim(trim($host), '.'));
+        // No trimming: whitespace and control characters (including a trailing NUL or newline) make the host invalid.
+        // At most one trailing dot (the fully-qualified form) is dropped.
+        $host = strtolower(str_ends_with($host, '.') ? substr($host, 0, -1) : $host);
 
         if ($host === '' || strlen($host) > 253) {
             return null;
@@ -25,6 +27,11 @@ final class Host
         }
 
         if (preg_match('/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\z/', $host) !== 1) {
+            return null;
+        }
+
+        // Hex-looking labels ("0x7f") are read as numbers by some resolvers, so "0x7f.0x1" is not a real host.
+        if (preg_match('/(?:^|\.)0x[0-9a-f]*(?:\.|$)/', $host) === 1) {
             return null;
         }
 
@@ -45,8 +52,18 @@ final class Host
 
         $url = trim($url);
 
+        // Browsers read a backslash as a slash, parse_url does not, so such URLs are read differently by the two.
+        if (preg_match('/[\\\\\s\x00-\x1f\x7f]/', $url) === 1) {
+            return null;
+        }
+
         if (str_starts_with($url, '//')) {
             $url = 'https:' . $url;
+        }
+
+        // Any userinfo ("a@b") makes the real host ambiguous to a reader, so it is refused.
+        if (preg_match('~^[a-z][a-z0-9+.-]*://[^/?#]*@~i', $url) === 1) {
+            return null;
         }
 
         $parts = parse_url($url);

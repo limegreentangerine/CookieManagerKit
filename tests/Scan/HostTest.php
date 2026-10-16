@@ -33,6 +33,11 @@ final class HostTest extends TestCase
             'array' => [['example.com'], null],
             'null' => [null, null],
             'ipv6' => ['[::1]', null],
+            'double trailing dot' => ['example.com..', null],
+            'trailing nul' => ["example.com\0", null],
+            'trailing newline' => ["a.b\n", null],
+            'hex labels' => ['0x7f.0x1', null],
+            'hex label inside' => ['0x7f.example.com', null],
         ];
     }
 
@@ -57,7 +62,11 @@ final class HostTest extends TestCase
             'javascript' => ['javascript:alert(1)', null],
             'data' => ['data:image/png;base64,AAAA', null],
             'ftp' => ['ftp://files.example.net/x', null],
-            'userinfo trick' => ['https://example.com@evil.example.net/x', 'evil.example.net'],
+            'userinfo' => ['https://example.com@evil.example.net/x', null],
+            'backslash trick' => ['https://evil.com\\@good.com/', null],
+            'backslash path' => ['https://good.com\\x', null],
+            'inner control char' => ["https://good.com/\x01", null],
+            'inner space' => ['https://good.com/a b', null],
             'garbage' => ['https://', null],
             'spaces in host' => ['https://exa mple.com/x', null],
             'whitespace around' => ["  https://cdn.example.net/a.js \n", 'cdn.example.net'],

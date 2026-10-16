@@ -14,8 +14,12 @@ final class Clean
             return null;
         }
 
+        $max = max(1, $max);
+
+        // Bound the work on hostile input: keep only the first max(4096, 8 * $max) bytes before scrubbing.
+        $value = substr($value, 0, max(4096, 8 * $max));
         $value = mb_scrub($value, 'UTF-8');
-        $value = preg_replace('/[\p{Cc}\p{Cf}\x{2028}\x{2029}]+/u', '', $value) ?? '';
+        $value = preg_replace('/[\p{Cc}\p{Cf}\x{2028}\x{2029}\x{00A0}\x{3000}]+/u', '', $value) ?? '';
         $value = trim($value);
 
         return $value === '' ? null : mb_substr($value, 0, $max, 'UTF-8');

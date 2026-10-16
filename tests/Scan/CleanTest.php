@@ -44,4 +44,22 @@ final class CleanTest extends TestCase
         $this->assertIsString($clean);
         $this->assertTrue(mb_check_encoding($clean, 'UTF-8'));
     }
+
+    public function testNonPositiveMaxIsClampedToOne(): void
+    {
+        $this->assertSame('a', Clean::name('abc', 0));
+        $this->assertSame('a', Clean::name('abc', -1));
+    }
+
+    public function testNonBreakingAndIdeographicSpacesAreRemoved(): void
+    {
+        $this->assertNull(Clean::name("\u{00A0}"));
+        $this->assertNull(Clean::name("\u{3000}\u{00A0}"));
+        $this->assertSame('ab', Clean::name("a\u{00A0}b"));
+    }
+
+    public function testHugeInputIsBoundedAndStillCapped(): void
+    {
+        $this->assertSame(128, mb_strlen((string) Clean::name(str_repeat('a', 5000000)), 'UTF-8'));
+    }
 }
