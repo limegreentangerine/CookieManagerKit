@@ -65,4 +65,11 @@ final class CookieHeaderTest extends TestCase
 
         $this->assertCount(1, $found);
     }
+
+    public function testHostComparisonIsCaseInsensitive(): void
+    {
+        $found = CookieHeader::findings(['a=1; Domain=.EXAMPLE.com', 'b=1'], 'WWW.Example.COM', 'https://www.example.com/');
+
+        $this->assertSame(['cookie a example.com', 'cookie b www.example.com'], self::summary($found));
+    }
 }

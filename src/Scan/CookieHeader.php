@@ -19,7 +19,7 @@ final class CookieHeader
             $pair = explode('=', trim($attribute), 2);
 
             if (count($pair) === 2 && strtolower(trim($pair[0])) === 'domain') {
-                $domain = Host::normalise(ltrim(trim($pair[1]), '.'));
+                $domain = Host::normalise(ltrim(trim($pair[1]), '.')); // lowercased by normalise
 
                 // A browser refuses a Domain that is not the host or a parent of it, so anything else is not real.
                 if ($domain !== null && ($domain === $siteHost || str_ends_with($siteHost, '.' . $domain))) {
@@ -38,6 +38,7 @@ final class CookieHeader
     public static function findings(array $setCookieLines, string $siteHost, string $pageUrl): array
     {
         $found = [];
+        $siteHost = Host::normalise($siteHost) ?? strtolower($siteHost);
 
         foreach ($setCookieLines as $line) {
             $parts = explode(';', (string) $line);

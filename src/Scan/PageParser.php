@@ -12,7 +12,34 @@ use CookieManagerKit\Entity\ScanFinding;
 final class PageParser
 {
     private const MAX_FINDINGS = 200;
+    private const MAX_BYTES = 2000000;
+    private const MAX_TAGS = 20000;
+    private const SCRIPT_TYPES = ['text/javascript', 'application/javascript', 'module'];
     private const LINK_RELATIONS = ['stylesheet', 'preload', 'prefetch', 'preconnect', 'dns-prefetch', 'modulepreload', 'icon'];
+
+    /**
+     * The parser takes quadratic time on very deep nesting, so the markup it sees is capped in size and tag count.
+     * A truncated page still yields the findings from the part that was kept.
+     */
+    private static function bound(string $html): string
+    {
+        $html = substr($html, 0, self::MAX_BYTES);
+        $offset = 0;
+
+        for ($i = 0; $i < self::MAX_TAGS; $i++) {
+            $at = strpos($html, '<', $offset);
+
+            if ($at === false) {
+                return $html;
+            }
+
+            $offset = $at + 1;
+        }
+
+        $at = strpos($html, '<', $offset);
+
+        return $at === false ? $html : substr($html, 0, $at);
+    }
 
     private static function isResourceLink(string $rel): bool
     {
@@ -34,6 +61,8 @@ final class PageParser
             return [];
         }
 
+        $html = self::bound($html);
+
         try {
             $document = HTMLDocument::createFromString($html, LIBXML_NOERROR);
         } catch (\Throwable) {
@@ -54,12 +83,22 @@ final class PageParser
         };
 
         foreach ($document->querySelectorAll('script, iframe[src], img[src], link[href]') as $element) {
+            if (count($found) >= self::MAX_FINDINGS) {
+                break;
+            }
+
             $tag = strtolower($element->localName);
 
             if ($tag === 'script') {
                 if ($element->hasAttribute('src')) {
                     $add(ScanFinding::SCRIPT, Host::fromUrl($element->getAttribute('src')));
 
+                    continue;
+                }
+
+                $type = strtolower(trim((string) $element->getAttribute('type')));
+
+                if ($type !== '' && !in_array($type, self::SCRIPT_TYPES, true)) {
                     continue;
                 }
 

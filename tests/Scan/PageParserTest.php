@@ -119,4 +119,24 @@ final class PageParserTest extends TestCase
 
         $this->assertSame([], PageParser::findings($html, 'https://example.com/', 'example.com'));
     }
+
+    public function testDeepNestingIsBoundedInTimeAndEarlierFindingsSurvive(): void
+    {
+        $html = '<script src="https://early.example.net/a.js"></script>' . str_repeat('<div>', 100000)
+            . '<script src="https://late.example.net/a.js"></script>';
+
+        $start = microtime(true);
+        $found = PageParser::findings($html, 'https://example.com/', 'example.com');
+
+        $this->assertLessThan(5.0, microtime(true) - $start);
+        $this->assertSame(['script early.example.net'], self::summary($found));
+    }
+
+    public function testNonExecutableScriptTypesAreNotScanned(): void
+    {
+        $html = '<script type="application/ld+json">{"@context":"https://schema.org"}</script>'
+            . '<script type="module">import "https://esm.example.net/m.js";</script>';
+
+        $this->assertSame(['script esm.example.net'], self::summary(PageParser::findings($html, 'https://example.com/', 'example.com')));
+    }
 }
