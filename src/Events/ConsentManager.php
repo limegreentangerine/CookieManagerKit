@@ -93,6 +93,7 @@ class ConsentManager
             self::path('/cookie-manager/config/' . $locale . '.json') . '?v=' . Catalog::hash(),
             self::path('/cookie-manager/consent'),
             $nonce,
+            self::path('/cookie-manager/event'),
         );
 
         $controller->addHeaderItem(LoaderScript::inline($boot, $nonce));

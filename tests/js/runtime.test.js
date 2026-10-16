@@ -622,3 +622,165 @@ describe('category and text robustness', () => {
 		expect(document.getElementById('cmk-body').querySelectorAll('br')).toHaveLength(2);
 	});
 });
+
+const EVENT_BOOT = { ...BOOT, event: '/cookie-manager/event' };
+const events = () =>
+	window.fetch.mock.calls
+		.filter(([url]) => url === '/cookie-manager/event')
+		.map(([, options]) => JSON.parse(options.body));
+const urls = () => window.fetch.mock.calls.map(([url]) => url);
+
+describe('banner statistics', () => {
+	beforeEach(() => {
+		window.sessionStorage.clear();
+	});
+
+	it('reports one shown when the banner appears automatically, with exactly v, e and l', () => {
+		mount(config(), EVENT_BOOT);
+
+		expect(events()).toEqual([{ v: 2, e: 'shown', l: 'en_GB' }]);
+		expect(Object.keys(events()[0]).sort()).toEqual(['e', 'l', 'v']);
+
+		const options = window.fetch.mock.calls[0][1];
+		expect(options.method).toBe('POST');
+		expect(options.credentials).toBe('same-origin');
+		expect(options.keepalive).toBe(true);
+		expect(options.headers['Content-Type']).toBe('application/json');
+	});
+
+	it('does not count the same tab session twice, but counts again once the key is gone', () => {
+		mount(config(), EVENT_BOOT);
+		window.cmkRuntime.stop();
+		mount(config(), EVENT_BOOT);
+
+		expect(events()).toHaveLength(1);
+
+		window.cmkRuntime.stop();
+		window.sessionStorage.clear();
+		mount(config(), EVENT_BOOT);
+
+		expect(events()).toHaveLength(2);
+	});
+
+	it('counts again for a new policy version', () => {
+		mount(config(), EVENT_BOOT);
+		window.cmkRuntime.stop();
+		mount(config(), { ...EVENT_BOOT, v: 3 });
+
+		expect(events().map((event) => event.v)).toEqual([2, 3]);
+	});
+
+	it('reports nothing when a valid choice already exists, and nothing for reopening alone', () => {
+		consent(['necessary', 'analytics']);
+		mount(config(), EVENT_BOOT);
+		window.cmkRuntime.open();
+
+		expect(events()).toEqual([]);
+	});
+
+	it('classifies accept all, reject all and a custom choice as first choices', () => {
+		mount(config(), EVENT_BOOT);
+		button('Accept all').click();
+		expect(events().map((event) => event.e)).toEqual(['shown', 'accept_all']);
+
+		window.cmkRuntime.stop();
+		document.cookie = 'cmk_consent=; Path=/; Max-Age=0';
+		window.fetch.mockClear();
+		window.sessionStorage.clear();
+		mount(config(), EVENT_BOOT);
+		button('Reject all').click();
+		expect(events().map((event) => event.e)).toEqual(['shown', 'reject_all']);
+
+		window.cmkRuntime.stop();
+		document.cookie = 'cmk_consent=; Path=/; Max-Age=0';
+		window.fetch.mockClear();
+		window.sessionStorage.clear();
+		mount(config(), EVENT_BOOT);
+		button('Customise').click();
+		document.querySelector('[data-cmk-cat="analytics"]').checked = true;
+		button('Save').click();
+		expect(events().map((event) => event.e)).toEqual(['shown', 'custom']);
+	});
+
+	it('reports a choice made after an earlier valid choice as changed only', () => {
+		consent(['necessary']);
+		mount(config(), EVENT_BOOT);
+		window.cmkRuntime.open();
+		button('Accept all').click();
+
+		expect(events().map((event) => event.e)).toEqual(['changed']);
+	});
+
+	it('sends the consent post before the choice event', () => {
+		mount(config(), EVENT_BOOT);
+		button('Accept all').click();
+
+		expect(urls()).toEqual(['/cookie-manager/event', '/cookie-manager/consent', '/cookie-manager/event']);
+	});
+
+	it('classes a choice as reject_all when there is nothing optional to choose', () => {
+		mount(
+			config({ categories: [{ handle: 'necessary', necessary: true, title: 'Necessary', description: 'Required', services: [], cookies: [] }] }),
+			EVENT_BOOT
+		);
+		button('Accept all').click();
+
+		expect(events().map((event) => event.e)).toEqual(['shown', 'reject_all']);
+	});
+
+	it('sends no statistics when no event URL is configured', () => {
+		mount(config(), BOOT);
+		button('Accept all').click();
+
+		expect(urls()).toEqual(['/cookie-manager/consent']);
+	});
+});
+
+describe('when statistics cannot be sent', () => {
+	beforeEach(() => {
+		window.sessionStorage.clear();
+	});
+
+	it('keeps the choice when the stats request rejects', async () => {
+		window.fetch = vi.fn((url) => (url === '/cookie-manager/event' ? Promise.reject(new Error('offline')) : Promise.resolve({ ok: true })));
+		mount(config(), EVENT_BOOT);
+		button('Accept all').click();
+		await Promise.resolve();
+
+		expect(saved()).toContain('analytics');
+		expect(root()).toBeNull();
+	});
+
+	it('keeps the banner and the choice when fetch throws synchronously', () => {
+		window.fetch = vi.fn(() => {
+			throw new Error('blocked by an extension');
+		});
+
+		expect(() => mount(config(), EVENT_BOOT)).not.toThrow();
+		expect(root()).not.toBeNull();
+		expect(() => button('Accept all').click()).not.toThrow();
+		expect(saved()).toContain('analytics');
+	});
+
+	it('keeps the banner and the choice when fetch does not exist', () => {
+		delete window.fetch;
+
+		expect(() => mount(config(), EVENT_BOOT)).not.toThrow();
+		expect(root()).not.toBeNull();
+		expect(() => button('Reject all').click()).not.toThrow();
+		expect(saved()).toEqual(['necessary']);
+	});
+
+	it('still counts the page view when sessionStorage is blocked', () => {
+		vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+			throw new Error('blocked');
+		});
+		vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new Error('blocked');
+		});
+
+		expect(() => mount(config(), EVENT_BOOT)).not.toThrow();
+		expect(events().map((event) => event.e)).toEqual(['shown']);
+		expect(root()).not.toBeNull();
+	});
+});
