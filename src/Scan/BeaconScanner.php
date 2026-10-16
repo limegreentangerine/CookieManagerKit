@@ -10,6 +10,8 @@ use CookieManagerKit\Entity\ScanFinding;
  */
 final class BeaconScanner implements Scanner
 {
+    private const OWN_COOKIES = [ScanToken::MARKER, ScanToken::COOKIE];
+
     public function scan(ScanContext $context): ScanResult
     {
         $report = $context->report;
@@ -21,6 +23,11 @@ final class BeaconScanner implements Scanner
         $found = [];
 
         foreach ($report->cookies as $name) {
+            // The package's own scan-mode cookies are never findings, so they cannot be classified or approved.
+            if (in_array($name, self::OWN_COOKIES, true)) {
+                continue;
+            }
+
             $found[] = new Finding(ScanFinding::COOKIE, $name, $context->siteHost, $report->path);
         }
 

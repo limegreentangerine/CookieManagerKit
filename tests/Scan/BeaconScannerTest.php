@@ -40,6 +40,15 @@ final class BeaconScannerTest extends TestCase
         $this->assertSame([1, 0], [$result->pagesScanned, $result->pagesFailed]);
     }
 
+    public function testThePackagesOwnScanCookiesAreNeverFindings(): void
+    {
+        $report = new BeaconReport('/', ['cmk_scan', 'cmk_scan_token', '_ga'], [], []);
+
+        $result = (new BeaconScanner())->scan(new ScanContext('example.com', [], $report));
+
+        $this->assertSame(['cookie _ga example.com'], self::summary($result->findings));
+    }
+
     public function testWithoutAReportThereIsNothing(): void
     {
         $result = (new BeaconScanner())->scan(new ScanContext('example.com'));
