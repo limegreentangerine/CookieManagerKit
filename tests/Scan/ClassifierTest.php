@@ -30,6 +30,32 @@ final class ClassifierTest extends TestCase
         return $suggestion === null ? null : [$suggestion->category, $suggestion->vendor];
     }
 
+    public function testMalformedEntriesAreSkipped(): void
+    {
+        $classifier = self::classifier([
+            ['kind' => 'cookie', 'category' => 'x', 'vendor' => 'V', 'origin' => 'override'],
+            ['kind' => 'cookie', 'pattern' => 5, 'category' => 'x', 'vendor' => 'V', 'origin' => 'override'],
+            ['kind' => 'cookie', 'pattern' => ['_ga'], 'category' => 'x', 'vendor' => 'V', 'origin' => 'override'],
+            ['kind' => 'cookie', 'pattern' => '_ga', 'category' => 'x', 'vendor' => 'V', 'origin' => null],
+            'garbage',
+            null,
+            self::entry('cookie', '_ga', 'analytics', 'bundled'),
+        ]);
+
+        $this->assertSame('analytics', $classifier->classify('cookie', '_ga', 'e.com')?->category);
+    }
+
+    public function testStorageEntriesOutrankCookieEntriesWithinAnOrigin(): void
+    {
+        $classifier = self::classifier([
+            self::entry('cookie', 'cart_item', 'marketing', 'bundled'),
+            self::entry('storage', 'cart*', 'necessary', 'bundled'),
+        ]);
+
+        $this->assertSame('necessary', $classifier->classify('storage', 'cart_item', 'e.com')?->category);
+        $this->assertSame('marketing', $classifier->classify('cookie', 'cart_item', 'e.com')?->category);
+    }
+
     public function testOverrideBeatsRefreshedBeatsBundledEvenWhenTheOlderEntryIsMoreSpecific(): void
     {
         $classifier = self::classifier([

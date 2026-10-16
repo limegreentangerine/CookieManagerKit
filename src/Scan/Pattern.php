@@ -67,6 +67,10 @@ final class Pattern
      */
     public static function matchesHost(string $pattern, string $host): bool
     {
+        if ($pattern === '' || strlen($pattern) > self::MAX_PATTERN || strlen($host) > self::MAX_SUBJECT || substr_count($pattern, '*') > self::MAX_WILDCARDS) {
+            return false;
+        }
+
         $pattern = strtolower($pattern);
         $host = strtolower($host);
 

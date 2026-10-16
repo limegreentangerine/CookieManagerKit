@@ -61,6 +61,10 @@ final class PatternTest extends TestCase
             'wildcard does not match a lookalike' => ['*.doubleclick.net', 'baddoubleclick.net', false],
             'wildcard does not match a suffix trick' => ['*.doubleclick.net', 'doubleclick.net.evil.example', false],
             'inner wildcard' => ['ads*.example.com', 'ads2.example.com', true],
+            'overlong host never matches a wildcard' => ['*.a.com', str_repeat('b', 300) . '.a.com', false],
+            'overlong wildcard pattern never matches' => ['*.' . str_repeat('a', 130) . '.com', str_repeat('a', 130) . '.com', false],
+            'empty pattern never matches a host' => ['', '', false],
+            'too many wildcards never match a host' => ['*.a*b*c*d.com', 'x.axbxcxd.com', false],
         ];
     }
 

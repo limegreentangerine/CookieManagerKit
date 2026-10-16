@@ -25,12 +25,32 @@ final class Classifier
      */
     public function __construct(array $entries, ?callable $isEssential = null)
     {
-        $entries = array_values($entries);
+        $valid = [];
 
-        usort($entries, static function (array $a, array $b): int {
-            return [self::RANK[$a['origin']] ?? 9, str_contains($a['pattern'], '*') ? 1 : 0, -strlen($a['pattern'])]
-                <=> [self::RANK[$b['origin']] ?? 9, str_contains($b['pattern'], '*') ? 1 : 0, -strlen($b['pattern'])];
-        });
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            foreach (['kind', 'pattern', 'category', 'vendor', 'origin'] as $key) {
+                if (!isset($entry[$key]) || !is_string($entry[$key])) {
+                    continue 2;
+                }
+            }
+
+            $valid[] = $entry;
+        }
+
+        $entries = $valid;
+
+        $key = static fn(array $e): array => [
+            self::RANK[$e['origin']] ?? 9,
+            $e['kind'] === 'storage' ? 0 : 1,
+            str_contains($e['pattern'], '*') ? 1 : 0,
+            -strlen($e['pattern']),
+        ];
+
+        usort($entries, static fn(array $a, array $b): int => $key($a) <=> $key($b));
 
         $this->entries = $entries;
         $this->isEssential = $isEssential !== null
