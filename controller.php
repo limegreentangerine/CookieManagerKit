@@ -187,6 +187,30 @@ class Controller extends PackageController
             [],
             ['POST'],
         );
+
+        // Public, but only useful with the signed scan-mode token an admin gets from the dashboard. See Ajax\ScanReport.
+        Route::register(
+            '/cookie-manager/scan/report',
+            '\CookieManagerKit\Ajax\ScanReport::record',
+            'cookie_manager_kit.scan_report',
+            [],
+            [],
+            '',
+            [],
+            ['POST'],
+        );
+
+        // Empty for everyone without the scan-mode token. See Ajax\ScanBeacon.
+        Route::register(
+            '/cookie-manager/scan/beacon.js',
+            '\CookieManagerKit\Ajax\ScanBeacon::script',
+            'cookie_manager_kit.scan_beacon',
+            [],
+            [],
+            '',
+            [],
+            ['GET', 'HEAD'],
+        );
     }
 
     public function registerEvents(): void
