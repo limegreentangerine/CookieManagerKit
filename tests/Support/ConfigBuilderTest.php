@@ -70,7 +70,7 @@ final class ConfigBuilderTest extends TestCase
     {
         $config = self::build(self::data());
 
-        $this->assertSame(['version', 'policyVersion', 'locale', 'banner', 'categories', 'style', 'lifetimeDays', 'widget'], array_keys($config));
+        $this->assertSame(['version', 'policyVersion', 'locale', 'banner', 'categories', 'style', 'lifetimeDays', 'consentMode', 'defaultModel', 'widget'], array_keys($config));
         $this->assertSame(3, $config['policyVersion']);
         $this->assertSame('en_GB', $config['locale']);
         $this->assertSame('Your privacy', $config['banner']['title']);
@@ -227,5 +227,37 @@ final class ConfigBuilderTest extends TestCase
         $this->assertSame($version(['a']), $version(['a']));
         $this->assertNotSame($version(['a']), $version(['b']));
         $this->assertNotSame($version([['name' => 'a', 'purpose' => 'x']]), $version([['name' => 'a', 'purpose' => 'y']]));
+    }
+
+    public function testConsentModeAndDefaultModelReachTheConfig(): void
+    {
+        $data = ['settings' => ['consentMode' => true, 'defaultModel' => 'opt_out'], 'categories' => [], 'banner' => [], 'defaults' => []];
+        $config = ConfigBuilder::build($data, 'en_GB', 'en_GB', []);
+
+        $this->assertTrue($config['consentMode']);
+        $this->assertSame('opt_out', $config['defaultModel']);
+    }
+
+    public function testTheirDefaultsAreOffAndOptIn(): void
+    {
+        $config = ConfigBuilder::build(['settings' => [], 'categories' => [], 'banner' => [], 'defaults' => []], 'en_GB', 'en_GB', []);
+
+        $this->assertFalse($config['consentMode']);
+        $this->assertSame('opt_in', $config['defaultModel']);
+    }
+
+    public function testAHostileModelFallsBackToOptIn(): void
+    {
+        $config = ConfigBuilder::build(['settings' => ['defaultModel' => '"><script>'], 'categories' => [], 'banner' => [], 'defaults' => []], 'en_GB', 'en_GB', []);
+
+        $this->assertSame('opt_in', $config['defaultModel']);
+    }
+
+    public function testChangingTheModelChangesTheConfigVersion(): void
+    {
+        $a = ConfigBuilder::build(['settings' => ['defaultModel' => 'opt_in']], 'en_GB', 'en_GB', []);
+        $b = ConfigBuilder::build(['settings' => ['defaultModel' => 'opt_out']], 'en_GB', 'en_GB', []);
+
+        $this->assertNotSame($a['version'], $b['version']);
     }
 }

@@ -168,6 +168,8 @@ final class ConfigBuilder
                 'shadow' => (bool) ($settings['shadow'] ?? true),
             ],
             'lifetimeDays' => StyleRules::lifetime($settings['lifetimeDays'] ?? null),
+            'consentMode' => (bool) ($settings['consentMode'] ?? false),
+            'defaultModel' => ($settings['defaultModel'] ?? 'opt_in') === 'opt_out' ? 'opt_out' : 'opt_in',
             'widget' => (bool) ($settings['widget'] ?? true),
         ];
 

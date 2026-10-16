@@ -134,6 +134,10 @@ class Banner extends DashboardPageController
         }
 
         $settings = Settings::get();
+        $settings
+            ->setConsentModeEnabled($this->post('consentMode') !== null)
+            ->setDefaultModel($this->post('defaultModel'))
+            ->setConsentLogRetentionMonths($this->post('retentionMonths'));
         $settings->setLifetimeDays($lifetime)->setWidgetEnabled($this->post('widgetEnabled') !== null);
 
         if ($this->post('askAgain') !== null) {

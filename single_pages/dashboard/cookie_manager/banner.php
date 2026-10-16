@@ -97,6 +97,27 @@ foreach ($locales as $locale => $label) {
         </div>
 
         <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" id="consentMode" name="consentMode" value="1" <?php echo O::e($settings->isConsentModeEnabled() ? 'checked' : '') ?>>
+            <label class="form-check-label" for="consentMode"><?php echo t('Send Google Consent Mode v2 signals') ?></label>
+            <div class="help-block form-text"><?php echo t('Starts every signal denied, then updates ad_storage, ad_user_data, ad_personalization, analytics_storage, functionality_storage, personalization_storage and security_storage from the visitor\'s choice. Scripts are still blocked by category as before.') ?></div>
+        </div>
+
+        <div class="form-group mb-3">
+            <label class="form-label" for="defaultModel"><?php echo t('Before a visitor chooses') ?></label>
+            <select class="form-select" style="max-width: 24rem" id="defaultModel" name="defaultModel">
+                <option value="opt_in" <?php echo O::e($settings->getDefaultModel() === 'opt_in' ? 'selected' : '') ?>><?php echo t('Optional cookies are off until they agree (opt-in)') ?></option>
+                <option value="opt_out" <?php echo O::e($settings->getDefaultModel() === 'opt_out' ? 'selected' : '') ?>><?php echo t('Optional cookies are on until they object (opt-out)') ?></option>
+            </select>
+            <div class="help-block form-text"><?php echo t('Opt-out is not suitable for visitors in the EU or UK. A browser that sends Global Privacy Control always starts with Marketing off.') ?></div>
+        </div>
+
+        <div class="form-group mb-3">
+            <label class="form-label" for="retentionMonths"><?php echo t('Keep a browser\'s consent history for (months after its last choice)') ?></label>
+            <input type="number" class="form-control" style="max-width: 12rem" id="retentionMonths" name="retentionMonths" min="1" max="120" step="1" value="<?php echo O::e($settings->getConsentLogRetentionMonths()) ?>">
+            <div class="help-block form-text"><?php echo t('Between 1 and 120. Older records are deleted by the "Purge old consent records" scheduled task and cannot be recovered.') ?></div>
+        </div>
+
+        <div class="form-check mb-3">
             <input type="checkbox" class="form-check-input" id="askAgain" name="askAgain" value="1">
             <label class="form-check-label" for="askAgain"><?php echo t('Ask every visitor again') ?></label>
             <div class="help-block form-text"><?php echo O::e(t('Tick this when your cookie policy changes. Current policy version: %s.', $settings->getPolicyVersion())) ?></div>
