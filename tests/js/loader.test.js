@@ -751,3 +751,95 @@ describe('the default model and GPC', () => {
 		expect(window.dataLayer.map((a) => [...a]).filter((c) => c[1] === 'update')).toHaveLength(0);
 	});
 });
+
+describe('opt-out and a stored choice from an older policy version', () => {
+	const setGpc = (value) => Object.defineProperty(window.navigator, 'globalPrivacyControl', { value, configurable: true });
+	const OUT = { ...BOOT, model: 'opt_out' };
+	const stale = (categories, overrides = {}) => setConsent({ v: 1, c: categories, t: 1700000000, ...overrides });
+	const SCRIPTS =
+		'<script type="text/plain" data-cmk-category="preferences">two()</script>' +
+		'<script type="text/plain" data-cmk-category="analytics">a()</script>' +
+		'<script type="text/plain" data-cmk-category="marketing">m()</script>';
+
+	beforeEach(() => {
+		delete window.dataLayer;
+		delete window.gtag;
+	});
+
+	afterEach(() => {
+		delete window.navigator.globalPrivacyControl;
+		delete window.dataLayer;
+		delete window.gtag;
+	});
+
+	it('a prior rejecter stays at necessary and optional scripts stay inert', () => {
+		document.body.innerHTML = SCRIPTS;
+		stale(['necessary']);
+		start(OUT);
+
+		expect(window.cmk.initial()).toEqual(['necessary']);
+		expect(live()).toHaveLength(0);
+		expect(window.cmk.get()).toBeNull();
+		expect(window.cmk.reconsent()).toBe(true);
+	});
+
+	it('a prior accepter of analytics keeps analytics, marketing stays off', () => {
+		document.body.innerHTML = SCRIPTS;
+		stale(['necessary', 'analytics']);
+		start(OUT);
+
+		expect(window.cmk.initial()).toEqual(['necessary', 'analytics']);
+		expect(live().map((s) => s.text)).toEqual(['a()']);
+		expect(window.cmk.has('marketing')).toBe(false);
+		expect(window.cmk.get()).toBeNull();
+	});
+
+	it('a category added after the stale choice stays off', () => {
+		stale(['necessary', 'analytics']);
+		start({ ...OUT, cats: [...BOOT.cats, 'newcat'] });
+
+		expect(window.cmk.initial()).toEqual(['necessary', 'analytics']);
+		expect(window.cmk.has('newcat')).toBe(false);
+	});
+
+	it('hostile or garbage categories in the stale cookie leave only necessary', () => {
+		[undefined, null, 'analytics', { 0: 'analytics' }, 7, [1, {}, null, 'nope', '<script>']].forEach((c) => {
+			stale(['x'], { c });
+			start(OUT);
+
+			expect(window.cmk.initial()).toEqual(['necessary']);
+		});
+	});
+
+	it('only known string entries of the stale cookie count', () => {
+		stale(['analytics', 5, 'bogus', null]);
+		start(OUT);
+
+		expect(window.cmk.initial()).toEqual(['necessary', 'analytics']);
+	});
+
+	it('GPC still removes marketing from a prior accepter', () => {
+		setGpc(true);
+		stale(['necessary', 'analytics', 'marketing']);
+		start(OUT);
+
+		expect(window.cmk.initial()).toEqual(['necessary', 'analytics']);
+	});
+
+	it('opt-in with a prior accepter is still only necessary', () => {
+		stale(['necessary', 'analytics']);
+		start({ ...BOOT, model: 'opt_in' });
+
+		expect(window.cmk.initial()).toEqual(['necessary']);
+		expect(window.cmk.has('analytics')).toBe(false);
+	});
+
+	it('Consent Mode sends no update for a prior rejecter', () => {
+		stale(['necessary']);
+		start({ ...OUT, cm: true });
+		const calls = window.dataLayer.map((a) => [...a]);
+
+		expect(calls.filter((c) => c[1] === 'update')).toHaveLength(0);
+		expect(calls[0][1]).toBe('default');
+	});
+});

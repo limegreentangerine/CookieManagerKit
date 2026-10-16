@@ -1016,6 +1016,20 @@ describe('the default model and GPC in the banner', () => {
 		expect(body().g).toBe('reconsent');
 	});
 
+	it('opt-out: a prior rejecter from an older version sees unticked boxes and Accept all still reconsents', () => {
+		document.cookie = 'cmk_consent=' + encodeURIComponent(JSON.stringify({ v: 1, c: ['necessary'], t: 1700000000 })) + '; Path=/';
+		mount(config(), { ...BOOT, model: 'opt_out' });
+		button('Customise').click();
+
+		expect(box('analytics').checked).toBe(false);
+		expect(box('marketing').checked).toBe(false);
+		expect(box('preferences').checked).toBe(false);
+
+		button('Accept all').click();
+
+		expect(body().g).toBe('reconsent');
+	});
+
 	it('opt-out: nothing is posted or stored until the visitor acts', () => {
 		mount(config(), { ...BOOT, model: 'opt_out' });
 

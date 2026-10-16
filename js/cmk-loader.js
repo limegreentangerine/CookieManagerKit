@@ -107,6 +107,13 @@
 	function initial() {
 		var list = optOut ? known.slice() : [NECESSARY];
 
+		/* A stale choice is not consent, but it is still a refusal: what they did not accept earlier stays off. */
+		if (prior) {
+			list = list.filter(function (handle) {
+				return handle === NECESSARY || prior.c.indexOf(handle) !== -1;
+			});
+		}
+
 		if (gpc()) {
 			list = list.filter(function (handle) {
 				return handle !== 'marketing';
@@ -200,7 +207,24 @@
 				return null;
 			}
 
-			return { id: typeof data.i === 'string' && GUID.test(data.i) ? data.i : '' };
+			var earlier = [];
+
+			if (Array.isArray(data.c)) {
+				for (var i = 0; i < data.c.length; i++) {
+					if (
+						typeof data.c[i] === 'string' &&
+						known.indexOf(data.c[i]) !== -1 &&
+						earlier.indexOf(data.c[i]) === -1
+					) {
+						earlier.push(data.c[i]);
+					}
+				}
+			}
+
+			return {
+				id: typeof data.i === 'string' && GUID.test(data.i) ? data.i : '',
+				c: earlier
+			};
 		} catch (e) {
 			return null;
 		}

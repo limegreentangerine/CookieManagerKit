@@ -132,7 +132,7 @@ Off by default (Banner page). When on, every signal starts denied except `securi
 
 The Banner page sets what happens before a visitor chooses. **Opt-in** (the default) keeps optional categories off until they agree. **Opt-out** lets optional categories run until they object, and is not suitable for visitors in the EU or UK. A browser that sends Global Privacy Control always starts with Marketing off, and the banner is still shown.
 
-With opt-out, a visitor whose stored choice is from an older policy version, whose cookie is unreadable, or who blocks cookies is treated as having made no choice, so optional categories run until they choose. Opt-in keeps optional categories off in every one of those cases.
+With opt-out, a visitor whose cookie is unreadable or who blocks cookies is treated as having made no choice, so optional categories run until they choose; a visitor whose stored choice is from an older policy version keeps their earlier refusals (a category they did not accept stays off, including categories added since) until they answer again. Opt-in keeps optional categories off in every one of these cases.
 
 ## Blocking a script
 
