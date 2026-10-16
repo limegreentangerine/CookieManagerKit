@@ -28,7 +28,7 @@ final class FindingsViewTest extends TestCase
     /**
      * @param list<ScanFinding> $findings
      */
-    private static function render(array $findings, string $status = '', string $kind = '', string $categoryFilter = '', int $pages = 1): string
+    private static function render(array $findings, string $status = '', string $kind = '', string $categoryFilter = '', int $pages = 1, ?string $reconsent = null): string
     {
         $view = new class {
             public function action(string $name): string
@@ -52,6 +52,27 @@ final class FindingsViewTest extends TestCase
         include dirname(__DIR__, 2) . '/single_pages/dashboard/cookie_manager/findings.php';
 
         return (string) ob_get_clean();
+    }
+
+    private static function renderWithReconsent(?string $reason): string
+    {
+        return self::render([], '', '', '', 1, $reason);
+    }
+
+    public function testTheReconsentNoticeShowsAnEditableEncodedReasonAndAToken(): void
+    {
+        $html = self::renderWithReconsent('"><img src=x onerror=alert(1)>');
+
+        $this->assertStringNotContainsString('<img', $html);
+        $this->assertStringContainsString('&lt;img', $html);
+        $this->assertStringContainsString('name="reason"', $html);
+        $this->assertStringContainsString('name="ccm_token"', $html);
+        $this->assertStringContainsString('ask_again', $html);
+    }
+
+    public function testNoNoticeWithoutASuggestion(): void
+    {
+        $this->assertStringNotContainsString('ask_again', self::renderWithReconsent(null));
     }
 
     public function testHostileNamesHostsSuggestionsAndTitlesAreEncoded(): void

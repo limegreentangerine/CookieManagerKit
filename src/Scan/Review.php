@@ -17,6 +17,21 @@ final class Review
     private const HOST_KINDS = [ScanFinding::SCRIPT, ScanFinding::IFRAME, ScanFinding::IMAGE, ScanFinding::RESOURCE];
 
     /**
+     * The pre-filled reason for asking visitors again after a service was added to the banner, or null when the
+     * service's category is always on (visitors are not asked about necessary cookies) or it has none.
+     */
+    public static function reconsentReason(Service $service): ?string
+    {
+        $category = $service->getCategory();
+
+        if ($category === null || $category->isNecessary()) {
+            return null;
+        }
+
+        return Text::plain('Added ' . $service->getName() . ' to ' . $category->getHandle(), 500);
+    }
+
+    /**
      * Attaches the finding to $service, or to a new service named $name in $category, and records the host on the
      * service so the banner and the later declaration can say where it loads from.
      *
