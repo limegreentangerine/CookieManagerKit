@@ -21,6 +21,13 @@ use CookieManagerKit\Support\{ErrorLog, Output, RateLimit, RequestGuard};
  * the consent endpoint: same-origin only, JSON only, a strict schema and size cap, a per-run rate limit, and it
  * additionally needs the signed scan-mode token, which only an admin who started scan mode holds. It stores names and
  * hosts only, answers with a fixed body, and never reflects anything from the request.
+ *
+ * Status contract (the body and headers are identical for every refusal):
+ *   200  accepted
+ *   401  the token or run is the problem: missing, malformed, forged or expired token, no server secret, or the run
+ *        is not a running beacon run / its window has closed. The beacon script must stop reporting.
+ *   400  anything else: wrong method, cross-origin, bad content type, body, size or keys, rate limit, and any
+ *        storage or ingest failure (logged server-side).
  */
 class ScanReport
 {
@@ -28,6 +35,7 @@ class ScanReport
 
     /** Every refusal looks the same from outside, so a probe learns nothing about which check failed. */
     private const REFUSED = 400;
+    private const TOKEN_REFUSED = 401;
 
     private function status(Request $request): int
     {
@@ -48,7 +56,7 @@ class ScanReport
         $token = ScanToken::verify($request->cookies->get(ScanToken::COOKIE), $now, ScanToken::secret());
 
         if ($token === null) {
-            return self::REFUSED;
+            return self::TOKEN_REFUSED;
         }
 
         if (!RateLimit::allow('scan/' . $token['run'], self::PER_MINUTE)) {
@@ -67,7 +75,7 @@ class ScanReport
 
         // A token for a session the admin ended (or that ran out) must not keep feeding findings.
         if (!$run instanceof ScanRun || !ScanRuns::acceptsReports($run, $now)) {
-            return self::REFUSED;
+            return self::TOKEN_REFUSED;
         }
 
         $result = (new BeaconScanner())->scan(new ScanContext($host, [], $report));
@@ -89,7 +97,8 @@ class ScanReport
             $status = self::REFUSED;
         } catch (\Throwable $e) {
             $status = self::REFUSED;
-            ErrorLog::record($e);
+            // Fixed message plus the class name only: exception text can carry request-derived data.
+            ErrorLog::record(new \RuntimeException('Scan report failed: ' . $e::class));
         }
 
         return new Response(

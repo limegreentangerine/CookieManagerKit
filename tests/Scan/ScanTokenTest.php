@@ -39,11 +39,28 @@ final class ScanTokenTest extends TestCase
         $this->assertNull(ScanToken::verify($run . '.' . $expires . '.' . str_repeat('0', 64), 1700000001, self::SECRET));
     }
 
-    public function testAnEmptySecretNeverVerifiesAnything(): void
+    public function testAnEmptySecretNeverIssuesOrVerifies(): void
     {
-        $token = ScanToken::issue(1, 1700000000, '');
-
+        $token = ScanToken::issue(1, 1700000000, self::SECRET);
         $this->assertNull(ScanToken::verify($token, 1700000001, ''));
+
+        $this->expectException(\InvalidArgumentException::class);
+        ScanToken::issue(1, 1700000000, '');
+    }
+
+    #[DataProvider('badRunIds')]
+    public function testARunIdOutsideTheRangeIsNotIssued(int $runId): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        ScanToken::issue($runId, 1700000000, self::SECRET);
+    }
+
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function badRunIds(): array
+    {
+        return ['zero' => [0], 'negative' => [-1], 'ten digits' => [1234567890]];
     }
 
     /**

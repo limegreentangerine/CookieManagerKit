@@ -4,6 +4,7 @@ namespace CookieManagerKit\Ajax;
 
 use Concrete\Core\Http\Request;
 use CookieManagerKit\Scan\ScanToken;
+use CookieManagerKit\Support\ErrorLog;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -21,7 +22,8 @@ class ScanBeacon
             $valid = $request->isMethod('GET') || $request->isMethod('HEAD')
                 ? ScanToken::verify($request->cookies->get(ScanToken::COOKIE), time(), ScanToken::secret()) !== null
                 : false;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            ErrorLog::record(new \RuntimeException('Scan beacon failed: ' . $e::class));
         }
 
         $headers = ['X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'no-store'];

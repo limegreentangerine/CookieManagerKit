@@ -20,6 +20,14 @@ final class ScanToken
 
     public static function issue(int $runId, int $now, string $secret): string
     {
+        if ($secret === '') {
+            throw new \InvalidArgumentException('A scan token needs a server-side secret.');
+        }
+
+        if ($runId < 1 || $runId > 999999999) {
+            throw new \InvalidArgumentException('Invalid scan run id.');
+        }
+
         $payload = $runId . '.' . ($now + self::LIFETIME);
 
         return $payload . '.' . self::sign($payload, $secret);
