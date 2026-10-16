@@ -11,7 +11,14 @@ use Doctrine\DBAL\Exception\TableNotFoundException;
  */
 final class PersistingConsentRecorder implements ConsentRecorder
 {
-    public function __construct(private ConsentLogStore $store, private ?\Closure $clock = null) {}
+    /**
+     * @param ?\Closure(\Throwable): void $onError receives every failure that is not a missing table; defaults to the error log
+     */
+    public function __construct(
+        private ConsentLogStore $store,
+        private ?\Closure $clock = null,
+        private ?\Closure $onError = null,
+    ) {}
 
     public function record(ConsentChoice $choice): ?string
     {
@@ -22,7 +29,7 @@ final class PersistingConsentRecorder implements ConsentRecorder
         } catch (TableNotFoundException) {
             return null;
         } catch (\Throwable $e) {
-            ErrorLog::record($e);
+            ($this->onError ?? ErrorLog::record(...))($e);
 
             return null;
         }

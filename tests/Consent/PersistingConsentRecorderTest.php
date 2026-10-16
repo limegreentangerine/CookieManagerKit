@@ -60,7 +60,14 @@ final class PersistingConsentRecorderTest extends TestCase
             }
         };
 
-        $this->assertNull((new PersistingConsentRecorder($store))->record($this->choice()));
+        $logged = [];
+        $spy = static function (\Throwable $e) use (&$logged): void {
+            $logged[] = $e;
+        };
+
+        $this->assertNull((new PersistingConsentRecorder($store, null, $spy))->record($this->choice()));
+        $this->assertCount(1, $logged);
+        $this->assertInstanceOf(\RuntimeException::class, $logged[0]);
     }
 
     public function testAMissingTableIsSilentBeforeTheUpdateHasRun(): void
@@ -86,6 +93,12 @@ final class PersistingConsentRecorderTest extends TestCase
             }
         };
 
-        $this->assertNull((new PersistingConsentRecorder($store))->record($this->choice()));
+        $logged = 0;
+        $spy = static function (\Throwable $e) use (&$logged): void {
+            $logged++;
+        };
+
+        $this->assertNull((new PersistingConsentRecorder($store, null, $spy))->record($this->choice()));
+        $this->assertSame(0, $logged);
     }
 }
