@@ -63,6 +63,18 @@ final class Installer
         ));
     }
 
+    /**
+     * The history row that records the version a site starts on, or null when history already exists.
+     */
+    public static function initialPolicyChange(?PolicyVersionChange $existing, int $version, int $now): ?PolicyVersionChange
+    {
+        if ($existing !== null) {
+            return null;
+        }
+
+        return (new PolicyVersionChange())->setVersion($version)->setReason(self::INITIAL_REASON)->setCreatedAt($now);
+    }
+
     public static function seed(EntityManagerInterface $em, string $locale): void
     {
         if ($em->getRepository(Settings::class)->findOneBy([]) === null) {
@@ -72,13 +84,14 @@ final class Installer
         // Settings::get() reads the row, so it has to be written before the first history row can name its version.
         $em->flush();
 
-        if ($em->getRepository(PolicyVersionChange::class)->findOneBy([]) === null) {
-            $em->persist(
-                (new PolicyVersionChange())
-                    ->setVersion(Settings::get()->getPolicyVersion())
-                    ->setReason(self::INITIAL_REASON)
-                    ->setCreatedAt(time()),
-            );
+        $initial = self::initialPolicyChange(
+            $em->getRepository(PolicyVersionChange::class)->findOneBy([]),
+            Settings::get()->getPolicyVersion(),
+            time(),
+        );
+
+        if ($initial !== null) {
+            $em->persist($initial);
         }
 
         $existing = [];
