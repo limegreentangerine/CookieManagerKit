@@ -122,7 +122,10 @@ class Controller extends PackageController
      *
      * @var array
      */
-    protected $tasks = [];
+    protected $tasks = [
+        'cmk_scan_crawl' => \CookieManagerKit\Command\Task\Controller\CrawlController::class,
+        'cmk_refresh_classification' => \CookieManagerKit\Command\Task\Controller\RefreshClassificationController::class,
+    ];
 
     public function getPackageName()
     {
@@ -136,6 +139,8 @@ class Controller extends PackageController
 
     public function installOrUpgrade(Package $pkg)
     {
+        $this->installContentFile('tasks.xml');
+
         $this->addSinglePage('/dashboard/cookie_manager', $pkg, t('Cookie Manager'), t('Manage the cookie banner, categories and appearance'));
         $this->addSinglePage('/dashboard/cookie_manager/banner', $pkg, t('Banner'), t('Banner text for each language'));
         $this->addSinglePage('/dashboard/cookie_manager/categories', $pkg, t('Categories'), t('Consent categories'));

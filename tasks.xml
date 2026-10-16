@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<concrete5-cif version="1.0">
+    <tasks>
+        <task handle="cmk_scan_crawl" package="cookie_manager_kit" />
+        <task handle="cmk_refresh_classification" package="cookie_manager_kit" />
+    </tasks>
+
+    <tasksets>
+        <taskset handle="cookie_manager_kit" name="Cookie Manager">
+            <task handle="cmk_scan_crawl" />
+            <task handle="cmk_refresh_classification" />
+        </taskset>
+    </tasksets>
+</concrete5-cif>
