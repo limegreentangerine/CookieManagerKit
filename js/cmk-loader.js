@@ -48,6 +48,52 @@
 		known.unshift(NECESSARY); /* save() always records it, so parse() must accept it */
 	}
 
+	/* Google Consent Mode v2: the fixed category-to-signal mapping, in one place. */
+	var SIGNALS = {
+		ad_storage: ['marketing'],
+		ad_user_data: ['marketing'],
+		ad_personalization: ['marketing'],
+		analytics_storage: ['analytics'],
+		functionality_storage: ['preferences'],
+		personalization_storage: ['preferences'],
+		security_storage: [NECESSARY]
+	};
+	var consentMode = boot.cm === true;
+
+	function signalsFor(granted) {
+		var out = {};
+
+		granted = granted.concat([NECESSARY]);
+
+		Object.keys(SIGNALS).forEach(function (name) {
+			out[name] = SIGNALS[name].some(function (handle) {
+				return granted.indexOf(handle) !== -1;
+			})
+				? 'granted'
+				: 'denied';
+		});
+
+		return out;
+	}
+
+	function gtagConsent(mode, state) {
+		/* Google's tag only recognises an `arguments` object in the dataLayer, so use the standard shim. */
+		w.dataLayer = w.dataLayer || [];
+		w.gtag =
+			w.gtag ||
+			function () {
+				w.dataLayer.push(arguments);
+			};
+		w.gtag('consent', mode, state);
+	}
+
+	function consentModeDefault() {
+		var state = signalsFor([]);
+
+		state.wait_for_update = 500;
+		gtagConsent('default', state);
+	}
+
 	function readRaw() {
 		var parts;
 
@@ -244,6 +290,10 @@
 
 		write();
 
+		if (consentMode) {
+			gtagConsent('update', signalsFor(list));
+		}
+
 		activate();
 		emit('consent:changed', {
 			categories: list.slice(),
@@ -265,6 +315,14 @@
 
 	current = parse(raw);
 	prior = current ? null : readPrior(raw);
+
+	if (consentMode) {
+		consentModeDefault();
+
+		if (current) {
+			gtagConsent('update', signalsFor(current.c));
+		}
+	}
 
 	w.cmk = {
 		version: version,

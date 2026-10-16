@@ -548,3 +548,106 @@ describe('the consent id', () => {
 		expect(document.cookie).not.toContain('cmk_consent');
 	});
 });
+
+describe('Consent Mode v2', () => {
+	const SIGNALS = [
+		'ad_storage',
+		'ad_user_data',
+		'ad_personalization',
+		'analytics_storage',
+		'functionality_storage',
+		'personalization_storage',
+		'security_storage'
+	];
+	const calls = () => window.dataLayer.map((args) => [...args]);
+
+	beforeEach(() => {
+		delete window.dataLayer;
+		delete window.gtag;
+	});
+
+	it('emits nothing when it is off', () => {
+		start({ ...BOOT, cm: false });
+
+		expect(window.dataLayer).toBeUndefined();
+		expect(window.gtag).toBeUndefined();
+	});
+
+	it('emits nothing when cm is not exactly true', () => {
+		start({ ...BOOT, cm: 'yes' });
+
+		expect(window.dataLayer).toBeUndefined();
+	});
+
+	it('denies every signal by default, before anything else, with wait_for_update', () => {
+		start({ ...BOOT, cm: true });
+		const [first] = calls();
+
+		expect(first[0]).toBe('consent');
+		expect(first[1]).toBe('default');
+		expect(Object.keys(first[2]).sort()).toEqual([...SIGNALS, 'wait_for_update'].sort());
+		SIGNALS.filter((s) => s !== 'security_storage').forEach((s) => expect(first[2][s]).toBe('denied'));
+		expect(first[2].security_storage).toBe('granted');
+		expect(first[2].wait_for_update).toBe(500);
+		expect(calls()).toHaveLength(1);
+	});
+
+	it('applies a stored choice in the same tick as the default', () => {
+		setConsent(valid(['necessary', 'analytics']));
+		start({ ...BOOT, cm: true });
+		const all = calls();
+
+		expect(all[0][1]).toBe('default');
+		expect(all[1][1]).toBe('update');
+		expect(all[1][2]).toMatchObject({
+			analytics_storage: 'granted',
+			ad_storage: 'denied',
+			ad_user_data: 'denied',
+			ad_personalization: 'denied',
+			functionality_storage: 'denied',
+			personalization_storage: 'denied',
+			security_storage: 'granted'
+		});
+	});
+
+	it.each([
+		[['necessary', 'preferences'], { functionality_storage: 'granted', personalization_storage: 'granted', analytics_storage: 'denied', ad_storage: 'denied' }],
+		[['necessary', 'marketing'], { ad_storage: 'granted', ad_user_data: 'granted', ad_personalization: 'granted', analytics_storage: 'denied' }],
+		[['necessary'], { ad_storage: 'denied', analytics_storage: 'denied', functionality_storage: 'denied', security_storage: 'granted' }]
+	])('maps %j', (categories, expected) => {
+		start({ ...BOOT, cm: true });
+		window.cmk.save(categories);
+		const updates = calls().filter((c) => c[1] === 'update');
+
+		expect(updates.at(-1)[2]).toMatchObject(expected);
+	});
+
+	it('updates on every change of choice, and a withdrawal denies again', () => {
+		start({ ...BOOT, cm: true });
+		window.cmk.save(['analytics']);
+		window.cmk.save([]);
+		const updates = calls().filter((c) => c[1] === 'update');
+
+		expect(updates).toHaveLength(2);
+		expect(updates[0][2].analytics_storage).toBe('granted');
+		expect(updates[1][2].analytics_storage).toBe('denied');
+	});
+
+	it('keeps an existing dataLayer and gtag and only appends', () => {
+		window.dataLayer = [['js', 'x']];
+		const existing = function () {};
+		window.gtag = existing;
+		start({ ...BOOT, cm: true });
+
+		expect(window.gtag).toBe(existing);
+		expect(window.dataLayer[0]).toEqual(['js', 'x']);
+	});
+
+	it('a category with no signal (custom) changes nothing Google sees', () => {
+		start({ ...BOOT, cats: [...BOOT.cats, 'social'], cm: true });
+		window.cmk.save(['social']);
+		const last = calls().filter((c) => c[1] === 'update').at(-1)[2];
+
+		SIGNALS.filter((s) => s !== 'security_storage').forEach((s) => expect(last[s]).toBe('denied'));
+	});
+});
