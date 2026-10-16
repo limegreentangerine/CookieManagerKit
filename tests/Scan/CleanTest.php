@@ -62,4 +62,9 @@ final class CleanTest extends TestCase
     {
         $this->assertSame(128, mb_strlen((string) Clean::name(str_repeat('a', 5000000)), 'UTF-8'));
     }
+
+    public function testLongRunOfStrippableCharactersBeforeANameDoesNotHideIt(): void
+    {
+        $this->assertSame('real', Clean::name(str_repeat("\x00", 5000) . str_repeat("\u{00A0}", 5000) . 'real'));
+    }
 }
