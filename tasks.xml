@@ -6,7 +6,7 @@
     </tasks>
 
     <tasksets>
-        <taskset handle="cookie_manager_kit" name="Cookie Manager">
+        <taskset handle="cookie_manager_kit" name="Cookie Manager" package="cookie_manager_kit">
             <task handle="cmk_scan_crawl" />
             <task handle="cmk_refresh_classification" />
         </taskset>
