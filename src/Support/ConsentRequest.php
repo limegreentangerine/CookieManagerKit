@@ -2,6 +2,8 @@
 
 namespace CookieManagerKit\Support;
 
+use CookieManagerKit\Consent\ConsentTrigger;
+
 /**
  * Reads and vets the body a visitor's browser posts when they make a choice. Pure: no Concrete, no database.
  * Everything arrives from the public internet, so nothing is trusted and nothing is "cleaned and kept": a body
@@ -10,15 +12,17 @@ namespace CookieManagerKit\Support;
 final class ConsentRequest
 {
     private const MAX_POLICY_VERSION = 1000000;
+    private const GUID = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/';
     public const MAX_BYTES = 2048;
     public const MAX_CATEGORIES = 20;
 
     /**
      * @param list<string> $knownHandles
+     * @param list<string> $knownLocales the site's locales; empty means "any well-formed locale"
      *
-     * @return array{v: int, c: list<string>}|null
+     * @return array{v: int, c: list<string>, i: ?string, trigger: string, locale: string}|null
      */
-    public static function parse(?string $contentType, string $body, array $knownHandles): ?array
+    public static function parse(?string $contentType, string $body, array $knownHandles, array $knownLocales = []): ?array
     {
         if ($contentType === null || preg_match('#^application/json(?:\s*;.*)?\z#i', trim($contentType)) !== 1) {
             return null;
@@ -38,10 +42,11 @@ final class ConsentRequest
             return null;
         }
 
-        $keys = array_keys($data);
-        sort($keys);
+        if (!array_key_exists('c', $data) || !array_key_exists('v', $data)) {
+            return null;
+        }
 
-        if ($keys !== ['c', 'v']) {
+        if (array_diff(array_keys($data), ['c', 'v', 'i', 'g', 'l']) !== []) {
             return null;
         }
 
@@ -69,6 +74,42 @@ final class ConsentRequest
             }
         }
 
-        return ['v' => $version, 'c' => $accepted];
+        $id = null;
+
+        if (array_key_exists('i', $data)) {
+            $raw = $data['i'];
+
+            if (!is_string($raw) || strlen($raw) !== 36 || preg_match(self::GUID, strtolower($raw)) !== 1) {
+                return null;
+            }
+
+            $id = strtolower($raw);
+        }
+
+        $locale = '';
+
+        if (array_key_exists('l', $data)) {
+            $raw = $data['l'];
+
+            if (!Text::isLocale($raw) || ($knownLocales !== [] && !in_array($raw, $knownLocales, true))) {
+                return null;
+            }
+
+            $locale = $raw;
+        }
+
+        if (array_key_exists('g', $data)) {
+            if (!ConsentTrigger::isValid($data['g'])) {
+                return null;
+            }
+
+            $trigger = $data['g'];
+        } else {
+            $trigger = count($accepted) === 1
+                ? ConsentTrigger::REJECT_ALL
+                : (array_diff($knownHandles, $accepted) === [] ? ConsentTrigger::ACCEPT_ALL : ConsentTrigger::CUSTOM);
+        }
+
+        return ['v' => $version, 'c' => $accepted, 'i' => $id, 'trigger' => $trigger, 'locale' => $locale];
     }
 }

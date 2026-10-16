@@ -12,11 +12,13 @@ final class ConsentRequestTest extends TestCase
 {
     private const KNOWN = ['necessary', 'preferences', 'analytics', 'marketing'];
 
+    private const GUID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+
     public function testAcceptsAValidBodyAndAlwaysIncludesNecessary(): void
     {
         $parsed = ConsentRequest::parse('application/json', '{"v":2,"c":["analytics"]}', self::KNOWN);
 
-        $this->assertSame(['v' => 2, 'c' => ['necessary', 'analytics']], $parsed);
+        $this->assertSame(['v' => 2, 'c' => ['necessary', 'analytics'], 'i' => null, 'trigger' => 'custom', 'locale' => ''], $parsed);
     }
 
     public function testDeduplicatesAndKeepsNecessaryOnce(): void
@@ -80,5 +82,56 @@ final class ConsentRequestTest extends TestCase
     public function testRejectsEverythingUnexpected(?string $contentType, string $body): void
     {
         $this->assertNull(ConsentRequest::parse($contentType, $body, self::KNOWN));
+    }
+
+    public function testTheNewFieldsAreOptionalAndDefaulted(): void
+    {
+        $parsed = ConsentRequest::parse('application/json', '{"v":2,"c":["analytics"]}', self::KNOWN);
+
+        $this->assertSame(['v' => 2, 'c' => ['necessary', 'analytics'], 'i' => null, 'trigger' => 'custom', 'locale' => ''], $parsed);
+    }
+
+    public function testTheTriggerIsDerivedWhenAbsent(): void
+    {
+        $all = ConsentRequest::parse('application/json', '{"v":1,"c":["preferences","analytics","marketing"]}', self::KNOWN);
+        $none = ConsentRequest::parse('application/json', '{"v":1,"c":[]}', self::KNOWN);
+
+        $this->assertSame('accept_all', $all['trigger']);
+        $this->assertSame('reject_all', $none['trigger']);
+    }
+
+    public function testAcceptsAnIdTriggerAndLocale(): void
+    {
+        $body = '{"v":2,"c":["analytics"],"i":"' . strtoupper(self::GUID) . '","g":"reconsent","l":"en_GB"}';
+        $parsed = ConsentRequest::parse('application/json', $body, self::KNOWN, ['en_GB', 'fr_FR']);
+
+        $this->assertSame(self::GUID, $parsed['i']);
+        $this->assertSame('reconsent', $parsed['trigger']);
+        $this->assertSame('en_GB', $parsed['locale']);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function hostileExtras(): array
+    {
+        return [
+            'id not a guid' => ['{"v":1,"c":[],"i":"abc"}'],
+            'id with markup' => ['{"v":1,"c":[],"i":"<script>alert(1)</script>"}'],
+            'id too long' => ['{"v":1,"c":[],"i":"' . str_repeat('a', 300) . '"}'],
+            'id not a string' => ['{"v":1,"c":[],"i":5}'],
+            'trigger unknown' => ['{"v":1,"c":[],"g":"changed"}'],
+            'trigger markup' => ['{"v":1,"c":[],"g":"\"><img src=x>"}'],
+            'trigger list' => ['{"v":1,"c":[],"g":["gpc"]}'],
+            'locale markup' => ['{"v":1,"c":[],"l":"<b>"}'],
+            'locale not a site locale' => ['{"v":1,"c":[],"l":"xx_XX"}'],
+            'locale not a string' => ['{"v":1,"c":[],"l":7}'],
+        ];
+    }
+
+    #[DataProvider('hostileExtras')]
+    public function testRejectsHostileOptionalFields(string $body): void
+    {
+        $this->assertNull(ConsentRequest::parse('application/json', $body, self::KNOWN, ['en_GB']));
     }
 }
