@@ -102,6 +102,9 @@ class Controller extends PackageController
      * @var array
      */
     protected $databaseTables = [
+        'cmkScanFindings',
+        'cmkScanRuns',
+        'cmkClassificationEntries',
         'cmkStats',
         'cmkServiceContents',
         'cmkCategoryContents',
