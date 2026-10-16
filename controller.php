@@ -137,6 +137,7 @@ class Controller extends PackageController
         $this->addSinglePage('/dashboard/cookie_manager/categories', $pkg, t('Categories'), t('Consent categories'));
         $this->addSinglePage('/dashboard/cookie_manager/services', $pkg, t('Services'), t('Third-party services listed to visitors'));
         $this->addSinglePage('/dashboard/cookie_manager/appearance', $pkg, t('Appearance'), t('Colours, position and layout'));
+        $this->addSinglePage('/dashboard/cookie_manager/statistics', $pkg, t('Statistics'), t('How visitors respond to the banner'));
 
         Installer::seed(app(EntityManagerInterface::class), Catalog::defaultLocale());
     }
