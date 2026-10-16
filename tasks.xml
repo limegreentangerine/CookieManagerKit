@@ -3,12 +3,14 @@
     <tasks>
         <task handle="cmk_scan_crawl" package="cookie_manager_kit" />
         <task handle="cmk_refresh_classification" package="cookie_manager_kit" />
+        <task handle="cmk_purge_consent_log" package="cookie_manager_kit" />
     </tasks>
 
     <tasksets>
         <taskset handle="cookie_manager_kit" name="Cookie Manager" package="cookie_manager_kit">
             <task handle="cmk_scan_crawl" />
             <task handle="cmk_refresh_classification" />
+            <task handle="cmk_purge_consent_log" />
         </taskset>
     </tasksets>
 </concrete5-cif>

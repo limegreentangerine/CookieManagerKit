@@ -128,6 +128,7 @@ class Controller extends PackageController
     protected $tasks = [
         'cmk_scan_crawl' => \CookieManagerKit\Command\Task\Controller\CrawlController::class,
         'cmk_refresh_classification' => \CookieManagerKit\Command\Task\Controller\RefreshClassificationController::class,
+        'cmk_purge_consent_log' => \CookieManagerKit\Command\Task\Controller\PurgeConsentLogController::class,
     ];
 
     public function getPackageName()

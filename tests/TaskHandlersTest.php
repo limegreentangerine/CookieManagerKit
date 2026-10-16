@@ -207,6 +207,40 @@ final class TaskHandlersTest extends TestCase
             $this->assertSame(RefreshClassificationCommandHandler::FAILED, $e->getMessage());
         }
     }
+    public function testPurgeReportsOnlyACount(): void
+    {
+        $sink = self::sink();
+        $handler = new class extends \CookieManagerKit\Command\Task\PurgeConsentLogCommandHandler {
+            protected function removed(): int
+            {
+                return 7;
+            }
+        };
+        $handler->setOutput($sink);
+        $handler(new \CookieManagerKit\Command\Task\PurgeConsentLogCommand());
+
+        $this->assertSame(['Removed the consent records of 7 browsers that have not made a choice within the retention period.'], $sink->lines);
+    }
+
+    public function testPurgeFailureIsAFixedSentence(): void
+    {
+        $handler = new class extends \CookieManagerKit\Command\Task\PurgeConsentLogCommandHandler {
+            protected function removed(): int
+            {
+                throw new \RuntimeException('SQLSTATE secret detail');
+            }
+        };
+        $handler->setOutput(self::sink());
+
+        try {
+            $handler(new \CookieManagerKit\Command\Task\PurgeConsentLogCommand());
+            $this->fail('expected an exception');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(\CookieManagerKit\Command\Task\PurgeConsentLogCommandHandler::FAILED, $e->getMessage());
+            $this->assertStringNotContainsString('secret', $e->getMessage());
+        }
+    }
+
     public static function setUpBeforeClass(): void
     {
         // Concrete's core classes refuse to load without it, as in the other tests that touch them.
