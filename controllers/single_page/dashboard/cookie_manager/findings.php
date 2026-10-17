@@ -85,7 +85,7 @@ class Findings extends DashboardPageController
     private function suggestReconsent(?string $reason): void
     {
         if ($reason !== null) {
-            $this->request->getSession()->getFlashBag()->set('cmk_reconsent', [$reason]);
+            $this->app->make('session')->getFlashBag()->set('cmk_reconsent', [$reason]);
         }
     }
 
@@ -126,7 +126,7 @@ class Findings extends DashboardPageController
         $this->set('categories', $categories);
         $this->set('services', $this->entityManager->getRepository(Service::class)->findBy([], ['name' => 'ASC']));
 
-        $suggested = $this->request->getSession()->getFlashBag()->get('cmk_reconsent');
+        $suggested = $this->app->make('session')->getFlashBag()->get('cmk_reconsent');
         $this->set('reconsent', is_array($suggested) && isset($suggested[0]) && is_string($suggested[0]) ? $suggested[0] : null);
     }
 
