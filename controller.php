@@ -158,6 +158,8 @@ class Controller extends PackageController
         $this->addSinglePage('/dashboard/cookie_manager/scan_settings', $pkg, t('Scanner Settings'), t('Crawl limits, alerts and classification data'));
         $this->addSinglePage('/dashboard/cookie_manager/consent_log', $pkg, t('Consent Log'), t('Who consented to what, and when'));
 
+        $this->autoInstallBlocks($pkg);
+
         $em = app(EntityManagerInterface::class);
 
         Installer::seed($em, Catalog::defaultLocale());

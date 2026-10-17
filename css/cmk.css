@@ -234,3 +234,16 @@
 .cmk-preview-stage .cmk[data-position='center-modal'][data-shadow='on'] {
 	box-shadow: 0 8px 30px rgb(0 0 0 / 25%);
 }
+
+.cmk-declaration__table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.cmk-declaration__table th,
+.cmk-declaration__table td {
+	padding: 6px 8px;
+	text-align: left;
+	vertical-align: top;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
