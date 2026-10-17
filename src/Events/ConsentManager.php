@@ -6,7 +6,7 @@ use Concrete\Core\Page\Page;
 use Concrete\Core\Asset\AssetList;
 use Concrete\Core\Support\Facade\Url;
 use Concrete\Core\Localization\Localization;
-use CookieManagerKit\Support\{Catalog, ErrorLog, LoaderScript, TrackingCode};
+use CookieManagerKit\Support\{Catalog, EmbedConfig, EmbedRewriter, ErrorLog, LoaderScript, TrackingCode};
 
 /**
  * Front end entry point. The output depends only on the page and the admin's settings, never on the visitor, so
@@ -193,6 +193,47 @@ class ConsentManager
                 $event->setArgument('contents', $rewritten);
             }
         });
+
+        // Still behind the $active gate above (public, non-edit pages only): EmbedRewriter must never see edit mode
+        // or dashboard output. A separate guarded step so a failure in either one cannot skip the other.
+        self::guarded(static function () use ($event): void {
+            $contents = (string) $event->getArgument('contents');
+            $rewritten = self::rewriteEmbeds(
+                $contents,
+                Catalog::snapshot(...),
+                Catalog::resolveLocale((string) Localization::activeLocale()),
+                Catalog::defaultLocale(),
+                ErrorLog::record(...),
+            );
+
+            if ($rewritten !== $contents) {
+                $event->setArgument('contents', $rewritten);
+            }
+        });
+    }
+
+    /**
+     * Pure apart from the callable that supplies the snapshot, which is only called when the page has an iframe. A
+     * failure leaves the page as it was and is reported; the rewriter itself fails closed per iframe.
+     *
+     * @param callable(): array<string, mixed> $snapshot
+     * @param callable(\Throwable): void       $onError
+     */
+    public static function rewriteEmbeds(string $contents, callable $snapshot, string $locale, string $default, callable $onError): string
+    {
+        if (stripos($contents, '<iframe') === false) {
+            return $contents;
+        }
+
+        try {
+            $config = EmbedConfig::fromSnapshot($snapshot(), $locale, $default);
+
+            return EmbedRewriter::rewrite($contents, $config['services'], $config['text'], $onError);
+        } catch (\Throwable $e) {
+            self::report($onError, $e);
+
+            return $contents;
+        }
     }
 
     /**
