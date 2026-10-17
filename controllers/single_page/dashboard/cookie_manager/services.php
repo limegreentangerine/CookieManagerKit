@@ -4,7 +4,7 @@ namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\Cook
 
 use CookieManagerKit\Entity\{Category, Service};
 use Concrete\Core\Page\Controller\DashboardPageController;
-use CookieManagerKit\Support\{Catalog, SiteLocales, Text};
+use CookieManagerKit\Support\{Catalog, CookieForm, SiteLocales, Text};
 
 class Services extends DashboardPageController
 {
@@ -128,6 +128,8 @@ class Services extends DashboardPageController
 
             $service->setContent($locale, $description);
         }
+
+        CookieForm::apply($service, CookieForm::parse($this->post('cookies'), array_keys(SiteLocales::options())));
 
         $this->entityManager->persist($service);
         $this->entityManager->flush();
