@@ -198,11 +198,14 @@ class ConsentManager
         // or dashboard output. A separate guarded step so a failure in either one cannot skip the other.
         self::guarded(static function () use ($event): void {
             $contents = (string) $event->getArgument('contents');
+            // Everything the rewrite needs is read lazily inside rewriteEmbeds, so a failure there fails closed.
             $rewritten = self::rewriteEmbeds(
                 $contents,
-                Catalog::snapshot(...),
-                Catalog::resolveLocale((string) Localization::activeLocale()),
-                Catalog::defaultLocale(),
+                static fn(): array => [
+                    Catalog::snapshot(),
+                    Catalog::resolveLocale((string) Localization::activeLocale()),
+                    Catalog::defaultLocale(),
+                ],
                 ErrorLog::record(...),
             );
 
@@ -213,26 +216,28 @@ class ConsentManager
     }
 
     /**
-     * Pure apart from the callable that supplies the snapshot, which is only called when the page has an iframe. A
-     * failure leaves the page as it was and is reported; the rewriter itself fails closed per iframe.
+     * Pure apart from the callable that supplies the configuration, which is only called when the page has an
+     * iframe. A failure is reported and fails closed (every iframe is blocked), never open; the rewriter itself
+     * also fails closed per iframe.
      *
-     * @param callable(): array<string, mixed> $snapshot
-     * @param callable(\Throwable): void       $onError
+     * @param callable(): array{0: array<string, mixed>, 1: string, 2: string} $source [snapshot, locale, default locale]
+     * @param callable(\Throwable): void                                     $onError
      */
-    public static function rewriteEmbeds(string $contents, callable $snapshot, string $locale, string $default, callable $onError): string
+    public static function rewriteEmbeds(string $contents, callable $source, callable $onError): string
     {
         if (stripos($contents, '<iframe') === false) {
             return $contents;
         }
 
         try {
-            $config = EmbedConfig::fromSnapshot($snapshot(), $locale, $default);
+            [$snapshot, $locale, $default] = $source();
+            $config = EmbedConfig::fromSnapshot($snapshot, $locale, $default);
 
             return EmbedRewriter::rewrite($contents, $config['services'], $config['text'], $onError);
         } catch (\Throwable $e) {
             self::report($onError, $e);
 
-            return $contents;
+            return EmbedRewriter::failClosed($contents);
         }
     }
 

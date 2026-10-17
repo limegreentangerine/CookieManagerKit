@@ -20,26 +20,42 @@ final class ConsentManagerEmbedTest extends TestCase
 
     public function testAPageWithoutIframesIsReturnedWithoutTouchingTheSnapshot(): void
     {
-        $this->assertSame('<p>x</p>', ConsentManager::rewriteEmbeds('<p>x</p>', fn() => throw new \LogicException('snapshot read'), 'en_GB', 'en_GB', static function (\Throwable $e): void {}));
+        $this->assertSame('<p>x</p>', ConsentManager::rewriteEmbeds('<p>x</p>', fn() => throw new \LogicException('snapshot read'), static function (\Throwable $e): void {}));
     }
 
     public function testAMatchedIframeIsReplaced(): void
     {
-        $out = ConsentManager::rewriteEmbeds('<iframe src="https://youtube.com/x"></iframe>', fn() => $this->snapshot(), 'en_GB', 'en_GB', static function (\Throwable $e): void {});
+        $out = ConsentManager::rewriteEmbeds('<iframe src="https://youtube.com/x"></iframe>', fn() => [$this->snapshot(), 'en_GB', 'en_GB'], static function (\Throwable $e): void {});
 
         $this->assertStringContainsString('data-cmk-embed=marketing', $out);
     }
 
-    public function testAFailureLeavesThePageAsItWasAndIsReported(): void
+    public function testAFailureFailsClosedAndIsReportedOnce(): void
     {
         $errors = [];
-        $html = '<iframe src="https://youtube.com/x"></iframe>';
+        $html = '<p>a</p><iframe src="https://youtube.com/x"></iframe><iframe src="https://other.example/y"></iframe>';
 
-        $out = ConsentManager::rewriteEmbeds($html, fn() => throw new \RuntimeException('db down'), 'en_GB', 'en_GB', function (\Throwable $e) use (&$errors): void {
+        $out = ConsentManager::rewriteEmbeds($html, fn() => throw new \RuntimeException('db down'), function (\Throwable $e) use (&$errors): void {
             $errors[] = $e;
         });
 
-        $this->assertSame($html, $out);
+        $this->assertNotSame('', $out);
+        $this->assertSame(2, substr_count($out, 'srcdoc'));
+        $this->assertCount(1, $errors);
+    }
+
+    public function testAThrowingLocaleResolverFailsClosedToo(): void
+    {
+        $errors = [];
+        $source = function (): array {
+            throw new \RuntimeException('locale down');
+        };
+
+        $out = ConsentManager::rewriteEmbeds('<iframe src="https://youtube.com/x"></iframe>', $source, function (\Throwable $e) use (&$errors): void {
+            $errors[] = $e;
+        });
+
+        $this->assertStringContainsString('srcdoc', $out);
         $this->assertCount(1, $errors);
     }
 
