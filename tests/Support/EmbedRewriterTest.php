@@ -47,6 +47,11 @@ final class EmbedRewriterTest extends TestCase
         }
     }
 
+    private function assertEveryIframeHasSrcdoc(string $html): void
+    {
+        $this->assertSame(substr_count(strtolower($html), '<iframe srcdoc'), preg_match_all('/<iframe(?=[\t\n\f\r \/>])/i', $html), 'an iframe is missing srcdoc');
+    }
+
     #[DataProvider('matching')]
     public function testHostsMatchOnlyTheDomainOrItsSubdomains(string $url, ?string $expected): void
     {
@@ -167,16 +172,6 @@ final class EmbedRewriterTest extends TestCase
         $out = $this->rewrite('<p>A</p><iframe src="https://youtube.com/x"><p>B</p>');
 
         $this->assertSame('<p>A</p><iframe data-cmk-embed=marketing data-cmk-src="https://youtube.com/x"><p>B</p>', $out);
-    }
-
-    public function testAnIframeWhoseTagNeverEndsIsNeverLeftLive(): void
-    {
-        // A browser drops this tag, so leaving it would be correct; the coarse check cannot tell and fails closed.
-        $out = $this->rewrite('<p>A</p><iframe src="https://youtube.com/x" title="oops></iframe><p>B</p>');
-
-        $this->assertDoesNotMatchRegularExpression('/<iframe[^>]*\ssrc=/i', $out);
-        $this->assertStringContainsString('<p>A</p>', $out);
-        $this->assertStringContainsString('<p>B</p>', $out);
     }
 
     public function testAnUnterminatedUnmatchedIframeIsLeftAlone(): void
@@ -338,83 +333,11 @@ final class EmbedRewriterTest extends TestCase
         $this->assertSame($html, $this->rewrite($html));
     }
 
-    public function testAVeryLargePageWithManyIframesFinishesQuicklyAndLeavesNoneLive(): void
-    {
-        $html = str_repeat('<p>filler text</p><iframe src="https://youtube.com/embed/x" title="t"></iframe>', 20000)
-            . '<iframe src="https://youtube.com/embed/y" title="' . str_repeat('a', 1_000_000);
-        $start = microtime(true);
-        $out = $this->rewrite($html);
-
-        $this->assertLessThan(3.0, microtime(true) - $start);
-        $this->assertSame([], EmbedRewriter::audit($out, self::SERVICES));
-        $this->assertSame(20000, substr_count($out, self::MARKETING));
-        $this->assertSame([], $this->errors);
-    }
-
-    public function testManyUnterminatedIframesFinishQuicklyAndLeaveNoneLive(): void
-    {
-        $start = microtime(true);
-        $out = $this->rewrite(str_repeat('<iframe src="https://youtube.com/embed/x"><p>filler</p>', 3000));
-
-        $this->assertLessThan(3.0, microtime(true) - $start);
-        $this->assertSame(3000, substr_count($out, self::MARKETING));
-        $this->assertSame([], EmbedRewriter::audit($out, self::SERVICES));
-    }
-
-    public function testQuoteTrapsWithNoTagEndAreLeftAloneBecauseNoBrowserEmitsThem(): void
-    {
-        $html = str_repeat('<iframe src="https://youtube.com/x" a="', 20000);
-
-        $this->assertSame($html, $this->rewrite($html));
-    }
-
     public function testRewritingTheOutputAgainChangesNothing(): void
     {
         $once = $this->rewrite('<p>Hi</p><iframe src="https://youtube.com/x" width="10"></iframe>');
 
         $this->assertSame($once, $this->rewrite($once));
-    }
-
-    public function testFailClosedRenamesSrcAndKeepsFallbackTextInert(): void
-    {
-        $out = EmbedRewriter::failClosed('<iframe src="https://youtube.com/x" title=">"><script>alert(1)</script></iframe><IFRAME/SRC=//example.org/><iframe-x src=a><img src=b>');
-
-        $this->assertSame('<iframe data-cmk-src="https://youtube.com/x" title=">"><script>alert(1)</script></iframe><IFRAME/data-cmk-src=//example.org/><iframe-x src=a><img src=b>', $out);
-        $this->assertSame($out, EmbedRewriter::failClosed($out));
-    }
-
-    public function testAPageTooTangledToScanFailsClosedAndReports(): void
-    {
-        $out = $this->rewrite(str_repeat('<iframe src="https://youtube.com/x" a="', 20000) . '">');
-
-        $this->assertNotSame([], $this->errors);
-        $this->assertDoesNotMatchRegularExpression('/<iframe[^>]*\ssrc=/i', $out);
-        $this->assertNotSame('', $out);
-    }
-
-    public function testAFailingErrorHandlerNeverEscapes(): void
-    {
-        $out = EmbedRewriter::rewrite(str_repeat('<iframe src="https://youtube.com/x" a="', 20000) . '">', self::SERVICES, self::TEXT, static function (\Throwable $e): void {
-            throw new \RuntimeException('handler failed');
-        });
-
-        $this->assertDoesNotMatchRegularExpression('/<iframe[^>]*\ssrc=/i', $out);
-    }
-
-    public function testAnAttackerForcedFallbackStillRenamesTheRealSource(): void
-    {
-        $html = '<!-- ' . str_repeat("<iframe title='", 600) . ' --><iframe a"=x title="y>z" src=https://youtube.com/x></iframe>';
-        $out = $this->rewrite($html);
-
-        $this->assertStringContainsString('data-cmk-src=https://youtube.com/x', $out);
-        $this->assertDoesNotMatchRegularExpression('/\ssrc=https/', $out);
-        $this->assertSame([], EmbedRewriter::audit($out, self::SERVICES));
-        $this->assertSame($out, EmbedRewriter::failClosed($out), 'failClosed is idempotent');
-
-        $direct = EmbedRewriter::failClosed($html);
-
-        $this->assertStringContainsString('data-cmk-src=https://youtube.com/x', $direct);
-        $this->assertDoesNotMatchRegularExpression('/\ssrc=https/', $direct);
     }
 
     /**
@@ -447,23 +370,6 @@ final class EmbedRewriterTest extends TestCase
         $this->assertSame($html, $this->rewrite($html));
     }
 
-    public function testASecondCoarseReadingCatchesWhatTheMatcherDoesNotSee(): void
-    {
-        // A browser uses the first src, so the matcher is right to leave this; the coarse check still reports it.
-        $html = '<iframe src="https://example.org/" src="https://youtube.com/y"></iframe>';
-
-        $this->assertSame([0], EmbedRewriter::audit($html, self::SERVICES));
-    }
-
-    public function testACoarseFindingInTheOutputFailsClosedForTheWholePage(): void
-    {
-        $out = $this->rewrite('<iframe src="https://youtube.com/x"></iframe><iframe src="https://example.org/" src="https://youtube.com/y"></iframe>');
-
-        $this->assertNotSame([], $this->errors);
-        $this->assertDoesNotMatchRegularExpression('/<iframe[^>]*\ssrc=/i', $out);
-        $this->assertSame(3, substr_count($out, 'data-cmk-src='));
-    }
-
     public function testServicesNamedOnlyInAQueryStringOrPathAreNotMistakenForTheHost(): void
     {
         $html = '<iframe src="https://example.org/?r=https://youtube.com/x"></iframe><iframe src="https://evil.com/youtube.com"></iframe><iframe src="https://evil.com/?u=youtube.com"></iframe>';
@@ -490,6 +396,74 @@ final class EmbedRewriterTest extends TestCase
         $this->assertStringNotContainsString('cmk-embed__', $out);
     }
 
+    public function testHostIsReadLikeABrowserReadsIt(): void
+    {
+        $this->assertSame('youtube.com', EmbedRewriter::host("  https://You\tTube.com:8080/x"));
+        $this->assertNull(EmbedRewriter::host('https://exa mple.com/'));
+    }
+
+    public function testFailClosedInsertsSrcdocAndChangesNothingElse(): void
+    {
+        $html = '<iframe src="https://youtube.com/x" title=">"><script>alert(1)</script></iframe><IFRAME/SRC=//example.org/><iframe>x</iframe><iframe-x src=a><iframe';
+        $out = EmbedRewriter::failClosed($html);
+
+        $this->assertSame('<iframe srcdoc src="https://youtube.com/x" title=">"><script>alert(1)</script></iframe><IFRAME srcdoc/SRC=//example.org/><iframe srcdoc>x</iframe><iframe-x src=a><iframe', $out);
+        $this->assertSame($out, EmbedRewriter::failClosed($out), 'idempotent');
+        $this->assertSame('', EmbedRewriter::failClosed(''));
+    }
+
+    public function testFailClosedSkipsAnIframeThatAlreadyStartsWithSrcdoc(): void
+    {
+        $html = '<iframe srcdoc="a" src="https://youtube.com/x"></iframe><iframe/srcdoc src=b></iframe><iframe srcdocx></iframe>';
+
+        $this->assertSame('<iframe srcdoc="a" src="https://youtube.com/x"></iframe><iframe/srcdoc src=b></iframe><iframe srcdoc srcdocx></iframe>', EmbedRewriter::failClosed($html));
+    }
+
+    public function testNeutralisingNeverTurnsInertIframeContentIntoMarkup(): void
+    {
+        $html = '<!-- ' . str_repeat("<iframe title='", 2000) . ' --><iframe src="https://example.org/"><script>alert(document.domain)</script></iframe>';
+        $out = $this->rewrite($html);
+
+        $this->assertSame(str_replace('<iframe', '<iframe srcdoc', $html), $out);
+        $this->assertStringNotContainsString('cmk-blocked', $out);
+        $this->assertNotSame([], $this->errors);
+    }
+
+    public function testAnAttackerForcedFallbackIsBlockedWithSrcdoc(): void
+    {
+        $html = '<!-- ' . str_repeat("<iframe title='", 600) . ' --><iframe a"=x title="y>z" src=https://youtube.com/x></iframe>';
+        $out = $this->rewrite($html);
+
+        $this->assertSame(str_replace('<iframe', '<iframe srcdoc', $html), $out);
+    }
+
+    public function testStressInputsAreCappedQuicklyAndNeverLeftLive(): void
+    {
+        $inputs = [
+            'many matched' => str_repeat('<iframe src="https://youtube.com/x"></iframe>', 40000),
+            'no tag ends' => str_repeat('<iframe ', 260000),
+            'quote trap' => str_repeat('<iframe src="https://youtube.com/x" a="', 52000) . '">',
+        ];
+
+        foreach ($inputs as $name => $html) {
+            $start = microtime(true);
+            $out = $this->rewrite($html);
+
+            $this->assertLessThan(2.0, microtime(true) - $start, $name);
+            $this->assertNotSame('', $out, $name);
+            $this->assertNotSame([], $this->errors, $name);
+            $this->assertEveryIframeHasSrcdoc($out);
+        }
+    }
+
+    public function testAPageOverFourMegabytesIsBlockedWithoutParsing(): void
+    {
+        $out = $this->rewrite('<iframe src="https://youtube.com/x"></iframe>' . str_repeat('a', 4_200_000));
+
+        $this->assertStringStartsWith('<iframe srcdoc src=', $out);
+        $this->assertNotSame([], $this->errors);
+    }
+
     public function testBrokenPcreNeverBlanksOrLeavesAFrameLive(): void
     {
         $html = '<p>keep me</p>' . str_repeat('<iframe src="https://youtube.com/x" title="t"></iframe>', 200);
@@ -498,26 +472,82 @@ final class EmbedRewriterTest extends TestCase
 
         try {
             $out = $this->rewrite($html);
-            $closed = EmbedRewriter::failClosed($html);
-            $neutral = EmbedRewriter::failClosed('<iframe src="https://youtube.com/x"></iframe>');
         } finally {
             ini_set('pcre.backtrack_limit', (string) $limit);
             ini_set('pcre.jit', (string) $jit);
         }
 
         $this->assertNotSame([], $this->errors);
-
-        foreach ([$out, $closed, $neutral] as $page) {
-            $this->assertNotSame('', $page);
-            $this->assertDoesNotMatchRegularExpression('/<iframe[^>]*\ssrc=/i', $page);
-        }
-
         $this->assertStringContainsString('<p>keep me</p>', $out);
+        $this->assertEveryIframeHasSrcdoc($out);
     }
 
-    public function testHostIsReadLikeABrowserReadsIt(): void
+    public function testAFailingErrorHandlerNeverEscapes(): void
     {
-        $this->assertSame('youtube.com', EmbedRewriter::host("  https://You\tTube.com:8080/x"));
-        $this->assertNull(EmbedRewriter::host('https://exa mple.com/'));
+        $out = EmbedRewriter::rewrite(str_repeat('<iframe src="https://youtube.com/x"></iframe>', 1500), self::SERVICES, self::TEXT, static function (\Throwable $e): void {
+            throw new \RuntimeException('handler failed');
+        });
+
+        $this->assertEveryIframeHasSrcdoc($out);
+    }
+
+    public function testAnIframeWhoseTagNeverEndsIsNeverLeftLive(): void
+    {
+        $out = $this->rewrite('<p>A</p><iframe src="https://youtube.com/x" title="oops></iframe><p>B</p>');
+
+        $this->assertSame('<p>A</p><iframe srcdoc src="https://youtube.com/x" title="oops></iframe><p>B</p>', $out);
+    }
+
+    public function testAnApostropheInTextDoesNotEscalateTheWholePage(): void
+    {
+        $out = $this->rewrite('<iframe src="https://www.youtube.com/embed/a" title="Today\'s video"></iframe><script src="https://www.youtube.com/iframe_api"></script>');
+
+        $this->assertStringContainsString('data-cmk-embed-placeholder', $out);
+        $this->assertStringEndsWith('</span><script src="https://www.youtube.com/iframe_api"></script>', $out);
+        $this->assertSame([], $this->errors);
+    }
+
+    public function testAServiceNamedInAQueryStringOfAnotherHostIsLeftAlone(): void
+    {
+        $html = '<iframe class="embedly-embed" src="//cdn.embedly.com/widgets/media.html?src=https%3A%2F%2Fwww.youtube.com%2Fembed%2Fabc&amp;display_name=YouTube" width="640" height="360"></iframe>';
+
+        $this->assertSame($html, $this->rewrite($html));
+        $this->assertSame([], $this->errors);
+    }
+
+    public function testSrcInsideAnotherAttributeValueIsNotASource(): void
+    {
+        $html = '<iframe title="src=https://youtube.com/" src="https://example.org/"></iframe>';
+
+        $this->assertSame($html, $this->rewrite($html));
+        $this->assertSame([], $this->errors);
+    }
+
+    public function testABareSrcdocMeansNothingLoadsAndNothingEscalates(): void
+    {
+        $html = '<iframe srcdoc src="https://youtube.com/x"></iframe><iframe src="https://youtube.com/x" srcdoc></iframe>';
+
+        $this->assertSame($html, $this->rewrite($html));
+        $this->assertSame([], $this->errors);
+    }
+
+    public function testADuplicateSourceWhoseFirstIsUnmatchedDoesNotEscalate(): void
+    {
+        $html = '<iframe src="https://example.org/" src="https://youtube.com/y"></iframe>';
+
+        $this->assertSame($html, $this->rewrite($html));
+        $this->assertSame([], $this->errors);
+    }
+
+    public function testTheCoarseCheckAloneFlagsALiveSourceAndNotLookalikes(): void
+    {
+        $coarse = new \ReflectionMethod(EmbedRewriter::class, 'coarse');
+
+        $this->assertSame([0], $coarse->invoke(null, '<iframe src="https://youtube.com/x"></iframe>', self::SERVICES));
+        $this->assertSame([0], $coarse->invoke(null, '<iframe src=&#x68;ttps://you&shy;tube.com/x></iframe>', self::SERVICES));
+
+        foreach (['https://evilyoutube.com/x', 'https://youtube.com.evil.com/x', 'https://youtube.com@evil.com/x', 'https://evil.com/?u=youtube.com', 'https://evil.com/youtube.com'] as $url) {
+            $this->assertSame([], $coarse->invoke(null, '<iframe src="' . $url . '"></iframe>', self::SERVICES), $url);
+        }
     }
 }

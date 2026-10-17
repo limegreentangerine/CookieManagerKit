@@ -22,9 +22,15 @@ namespace CookieManagerKit\Support;
  * placeholder (message, accept button, preferences button) inserted before them and a closing `</span>` after their
  * end tag.
  *
- * Fails closed: on any error, or if the result still contains a live matched iframe (checked by a coarse second scan
- * that shares no code with the matcher), every iframe start tag has its `src` renamed instead; if even that cannot be
- * done, every `<iframe` tag is renamed `<cmk-blocked-iframe`. A page is never blanked.
+ * Fails closed: on any error, on a page with more than 1000 `<iframe` or more than 4 MB, or if the result still
+ * contains a live matched iframe (checked by a coarse second scan that shares no code with the matcher), every
+ * `<iframe` gets a bare ` srcdoc` attribute inserted right after its name. The element stays an iframe (so its content
+ * stays inert text), no quote is inserted, and browsers ignore `src` when `srcdoc` is present. A page is never blanked.
+ *
+ * Grammar commentary: tag() is the attribute grammar, real() is the markup-context reading and coarse() is the
+ * deliberately cruder cross-check; a change to one must be checked against the other two. The coarse check only
+ * extends past a `>` for a quote that opens an attribute value (never an apostrophe in text), only reads a `src` in
+ * attribute-name position, only the first one (a browser uses the first), and treats any `srcdoc` as "loads nothing".
  *
  * The caller must never run this on edit-mode or dashboard output; it is for visitor-facing page output only.
  *
@@ -51,19 +57,6 @@ final class EmbedRewriter
         $c = $html[$at] ?? '';
 
         return $c !== '' && strpbrk($c, "\t\n\f\r />") !== false;
-    }
-
-    private static function neutralise(string $html): string
-    {
-        $out = '';
-        $offset = 0;
-
-        while (($at = stripos($html, '<iframe', $offset)) !== false) {
-            $out .= substr($html, $offset, $at - $offset) . (self::delimited($html, $at + 7) ? '<cmk-blocked-iframe' : substr($html, $at, 7));
-            $offset = $at + 7;
-        }
-
-        return $out . substr($html, $offset);
     }
 
     /**
@@ -93,7 +86,7 @@ final class EmbedRewriter
      * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}>                                                                                    $services
      * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>} $ctx
      *
-     * @return list<array{at: int, nameEnd: int, tagEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, url: string, values: array<string, string>}>
+     * @return list<array{at: int, nameEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, url: string, values: array<string, string>}>
      */
     private static function occurrences(string $html, array $services, array &$ctx): array
     {
@@ -133,7 +126,6 @@ final class EmbedRewriter
             $found[] = [
                 'at' => $at,
                 'nameEnd' => $at + 7,
-                'tagEnd' => $tag['end'],
                 'attrs' => $tag['attrs'],
                 'service' => $service,
                 'url' => $parsed['url'],
@@ -240,7 +232,7 @@ final class EmbedRewriter
                 $attrs[] = ['name' => $name, 'at' => $start, 'value' => $value];
             }
 
-            $ctx['budget'] -= 4 + $j - $start;
+            $ctx['budget'] -= 64 + $j - $start;
 
             if ($ctx['budget'] < 0 || count($attrs) > 256) {
                 throw new \RuntimeException('The page is too tangled to scan safely.');
@@ -271,12 +263,11 @@ final class EmbedRewriter
      *
      * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>} $ctx
      *
-     * @return array<int, int>
+     * @param array<int, int> $real filled in as iframes are confirmed
      */
-    private static function real(string $html, array &$ctx): array
+    private static function real(string $html, array &$ctx, array &$real): void
     {
         $i = 0;
-        $real = [];
 
         while (($i = strpos($html, '<', $i)) !== false) {
             $c = $html[$i + 1] ?? '';
@@ -366,19 +357,26 @@ final class EmbedRewriter
             $i = $close + 1;
         }
 
-        return $real;
     }
 
     /**
-     * @param list<array{at: int, nameEnd: int, tagEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, url: string, values: array<string, string>}> $found
-     * @param array{message: string, accept: string, customise: string}                                                                                                                                                                                           $text
-     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>}                                                                        $ctx
+     * @param list<array{at: int, nameEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, url: string, values: array<string, string>}> $found
+     * @param array{message: string, accept: string, customise: string}                                                                                                                                                                              $text
+     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>}                                                           $ctx
      *
      * @return array<int, array{0: int, 1: int, 2: int, 3: string}> keyed by offset * 4 + order; offset, order, bytes to delete, text to insert
      */
     private static function edits(string $html, array $found, array $text, array &$ctx): array
     {
-        $real = self::real($html, $ctx);
+        $realCtx = self::context($html, 2, 1_000_000);
+        $real = [];
+
+        try {
+            self::real($html, $realCtx, $real);
+        } catch (\RuntimeException) {
+            // Out of work budget: iframes confirmed so far keep their placeholder, the rest are blocked without one.
+        }
+
         $edits = [];
 
         foreach ($found as $f) {
@@ -467,27 +465,28 @@ final class EmbedRewriter
     }
 
     /**
-     * The coarse cross-check. For every iframe start tag (read up to its next `>`, extended while quotes are unbalanced)
-     * that has an attribute literally named `src`, the tag text is folded as hard as it can be (tabs and newlines
-     * dropped, every character reference decoded even without a semicolon, percent-decoded, NFKC-folded, invisible
-     * characters dropped) and the `src` value is tested for a known domain at a label boundary in an authority
-     * position. It may over-report; it shares no code with decode(), parse() or match(). With `null` services any
-     * iframe still carrying a `src` attribute is reported (used to verify a plain rename).
+     * The coarse cross-check (see tag() and real() for the grammar it is cruder than). For every iframe start tag, read
+     * up to its next `>` and extended only while a quote that opens an attribute value (`=` then a quote) is unclosed,
+     * the first `src` in attribute-name position (outside every quoted value) is folded as hard as it can be (tabs and
+     * newlines dropped, every character reference decoded even without a semicolon, percent-decoded, NFKC-folded,
+     * invisible characters dropped) and its value is tested for a known domain at a label boundary in the authority,
+     * ignoring path, query and fragment. A tag with any `srcdoc` loads nothing and is skipped. It may over-report; it
+     * shares no code with decode(), parse() or match().
      *
-     * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}>|null $services
+     * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
      *
      * @return list<int>
      */
-    private static function coarse(string $html, ?array $services): array
+    private static function coarse(string $html, array $services): array
     {
         $patterns = [];
 
-        foreach ($services ?? [] as $service) {
+        foreach ($services as $service) {
             foreach ($service['domains'] as $domain) {
                 $base = self::base($domain);
 
                 if ($base !== '') {
-                    $patterns[] = '~(?<![a-z0-9_:.-])src\s*=[\x00-\x20"\']*(?:https?:|//)/*(?:[^/?#\s"\'>@]*@)?(?:[a-z0-9-]*\.)*' . preg_quote($base, '~') . '\.?(?=[/:?#\s"\'>]|$)~';
+                    $patterns[] = '~^src\s*=[\x00-\x20"\']*(?:https?:|//)/*(?:[^/?#\s"\'>@]*@)?(?:[a-z0-9-]*\.)*' . preg_quote($base, '~') . '\.?(?=[/:?#\s"\'>]|$)~';
                 }
             }
         }
@@ -495,7 +494,7 @@ final class EmbedRewriter
         self::ok(preg_match_all(self::OCCURRENCE, $html, $matches, PREG_OFFSET_CAPTURE));
 
         $last = strrpos($html, '>');
-        $budget = 32 * strlen($html) + 8_000_000;
+        $budget = 2 * strlen($html) + 1_000_000;
         $live = [];
 
         foreach ($matches[0] as [, $at]) {
@@ -505,7 +504,7 @@ final class EmbedRewriter
 
             $end = strpos($html, '>', $at);
 
-            for ($extend = 0; $extend < 8 && $end !== false && $end < $last && (substr_count($html, '"', $at, $end - $at) % 2 === 1 || substr_count($html, "'", $at, $end - $at) % 2 === 1); ++$extend) {
+            for ($extend = 0; $extend < 8 && $end !== false && $end < $last && self::quoted(substr($html, $at, $end - $at))[1]; ++$extend) {
                 $end = strpos($html, '>', $end + 1);
             }
 
@@ -516,22 +515,31 @@ final class EmbedRewriter
                 throw new \RuntimeException('The page is too tangled to scan safely.');
             }
 
-            if (self::ok(preg_match('/(?<![a-z0-9_:.-])src\s*=/i', $raw)) !== 1) {
+            [$ranges] = self::quoted($raw);
+            self::ok(preg_match_all('/(?<=[\t\n\f\r \/"\'])(srcdoc|src)(?=[\t\n\f\r \/=>]|$)/i', $raw, $names, PREG_OFFSET_CAPTURE));
+
+            $source = null;
+            $srcdoc = false;
+
+            foreach ($names[1] as [$name, $position]) {
+                foreach ($ranges as [$from, $to]) {
+                    if ($position >= $from && $position < $to) {
+                        continue 2;
+                    }
+                }
+
+                if (strtolower($name) === 'srcdoc') {
+                    $srcdoc = true;
+                } elseif ($source === null) {
+                    $source = $position;
+                }
+            }
+
+            if ($srcdoc || $source === null) {
                 continue;
             }
 
-            // A browser ignores src when srcdoc is present (the matcher agrees), so such a tag loads nothing.
-            if ($services !== null && self::ok(preg_match('/(?<![a-z0-9_:.-])srcdoc\s*=/i', $raw)) === 1) {
-                continue;
-            }
-
-            if ($services === null) {
-                $live[] = $at;
-
-                continue;
-            }
-
-            $folded = self::fold($raw);
+            $folded = self::fold(substr($raw, $source));
 
             foreach ($patterns as $pattern) {
                 if (self::ok(preg_match($pattern, $folded)) === 1) {
@@ -543,6 +551,34 @@ final class EmbedRewriter
         }
 
         return $live;
+    }
+
+    /**
+     * The quoted attribute values in some tag text (a quote only counts where it follows `=`), as [start, end) ranges
+     * of their contents, and whether the last one never closes.
+     *
+     * @return array{0: list<array{0: int, 1: int}>, 1: bool}
+     */
+    private static function quoted(string $raw): array
+    {
+        $ranges = [];
+        $offset = 0;
+
+        while (self::ok(preg_match('/=[\t\n\f\r ]*(["\'])/', $raw, $m, PREG_OFFSET_CAPTURE, $offset)) === 1) {
+            $open = $m[1][1] + 1;
+            $close = strpos($raw, $m[1][0], $open);
+
+            if ($close === false) {
+                $ranges[] = [$open, strlen($raw)];
+
+                return [$ranges, true];
+            }
+
+            $ranges[] = [$open, $close];
+            $offset = $close + 1;
+        }
+
+        return [$ranges, false];
     }
 
     private static function fold(string $raw): string
@@ -749,6 +785,29 @@ final class EmbedRewriter
         return null;
     }
 
+    private static function startsWithSrcdoc(string $html, int $from): bool
+    {
+        $at = $from + strspn($html, self::SPACE . '/', $from);
+
+        return strncasecmp(substr($html, $at, 6), 'srcdoc', 6) === 0 && ($at + 6 >= strlen($html) || strpbrk($html[$at + 6], self::SPACE . '/>=') !== false);
+    }
+
+    private static function tooMany(string $html): bool
+    {
+        $count = 0;
+        $offset = 0;
+
+        while (($at = stripos($html, '<iframe', $offset)) !== false) {
+            $offset = $at + 7;
+
+            if (++$count > 1000) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
      * @param array{message: string, accept: string, customise: string}                                 $text
@@ -760,8 +819,14 @@ final class EmbedRewriter
             return $html;
         }
 
+        if (strlen($html) > 4_194_304 || self::tooMany($html)) {
+            self::report($onError, new \RuntimeException('The page is too large to rewrite; its iframes were blocked.'));
+
+            return self::failClosed($html);
+        }
+
         try {
-            $ctx = self::context($html, 4);
+            $ctx = self::context($html, 2, 500_000);
             $found = self::occurrences($html, $services, $ctx);
 
             if ($found === []) {
@@ -787,40 +852,28 @@ final class EmbedRewriter
     }
 
     /**
-     * Renames `src` to `data-cmk-src` in every iframe start tag, whether or not it names a known service, reading each
-     * tag with the browser grammar and no PCRE. If that fails, or the coarse check still finds an iframe with a `src`,
-     * every `<iframe` tag is renamed `<cmk-blocked-iframe` instead. Never returns an empty page for a non-empty one.
+     * Inserts a bare ` srcdoc` right after every `<iframe` followed by whitespace, `/` or `>`. No parsing, no PCRE, no
+     * quotes; an iframe that already starts with `srcdoc` is skipped, so running it twice changes nothing.
      */
     public static function failClosed(string $html): string
     {
-        try {
-            $ctx = self::context($html, 32, 8_000_000);
-            $edits = [];
-            $offset = 0;
+        $out = '';
+        $copied = 0;
+        $offset = 0;
 
-            while (($at = stripos($html, '<iframe', $offset)) !== false) {
-                $offset = $at + 7;
+        while (($at = stripos($html, '<iframe', $offset)) !== false) {
+            $end = $at + 7;
+            $offset = $end;
 
-                if (!self::delimited($html, $offset)) {
-                    continue;
-                }
-
-                foreach (self::tag($html, $at + 1, $ctx)['attrs'] ?? [] as $attribute) {
-                    if ($attribute['name'] === 'src') {
-                        $edits[$attribute['at'] * 4] = [$attribute['at'], 0, 3, 'data-cmk-src'];
-                    }
-                }
+            if (!self::delimited($html, $end) || self::startsWithSrcdoc($html, $end)) {
+                continue;
             }
 
-            $out = self::splice($html, $edits);
-
-            if (self::coarse($out, null) === []) {
-                return $out;
-            }
-        } catch (\Throwable) {
+            $out .= substr($html, $copied, $end - $copied) . ' srcdoc';
+            $copied = $end;
         }
 
-        return self::neutralise($html);
+        return $out . substr($html, $copied);
     }
 
     /**
@@ -833,7 +886,7 @@ final class EmbedRewriter
      */
     public static function audit(string $html, array $services): array
     {
-        $ctx = self::context($html, 32, 8_000_000);
+        $ctx = self::context($html, 4, 1_000_000);
         $strict = array_column(self::occurrences($html, $services, $ctx), 'at');
 
         return array_values(array_unique(array_merge($strict, self::coarse($html, $services))));
