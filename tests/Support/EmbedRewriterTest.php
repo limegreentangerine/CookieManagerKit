@@ -579,6 +579,9 @@ final class EmbedRewriterTest extends TestCase
     }
 
     /**
+     * ICU-dependent: on old ICU these hosts fail validation and go through guess(); on new ICU they validate. Results
+     * must be identical under both (run the suite with each PHP build).
+     *
      * @return iterable<string, array{string}>
      */
     public static function ignoredCharacterLookalikes(): iterable

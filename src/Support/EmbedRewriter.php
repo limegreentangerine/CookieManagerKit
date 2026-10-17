@@ -122,7 +122,7 @@ final class EmbedRewriter
                 continue;
             }
 
-            $service = $parsed['host'] !== null ? self::matchHost($parsed['host'], $services) : (($parsed['guess'] !== null ? self::matchHost($parsed['guess'], $services) : null) ?? self::named($parsed['authority'], $services));
+            $service = $parsed['host'] !== null ? self::matchHost($parsed['host'], $services) : ($parsed['guess'] !== null ? self::matchHost($parsed['guess'], $services) : self::named($parsed['authority'], $services));
 
             if ($service === null || !Text::isHandle($service['category'])) {
                 continue;
@@ -721,6 +721,8 @@ final class EmbedRewriter
      * Fail-toward-blocking reading of a host that could not be validated (the server's IDNA tables can lag a
      * browser's, which ignores characters ours rejects): NFKC, lower-case, ideographic dots to dots, every character
      * outside [a-z0-9.-] deleted, edge dots trimmed. Only ever used for hosts that already failed validation.
+     * The result must hold under both old and new ICU versions: a guess that fails to match a service at a label
+     * boundary is final and must not fall back to the substring check in named().
      */
     private static function guess(string $host): ?string
     {
