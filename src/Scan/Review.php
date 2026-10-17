@@ -2,11 +2,11 @@
 
 namespace CookieManagerKit\Scan;
 
-use CookieManagerKit\Support\Text;
 use CookieManagerKit\Entity\Cookie;
 use CookieManagerKit\Entity\Service;
 use CookieManagerKit\Entity\Category;
 use CookieManagerKit\Entity\ScanFinding;
+use CookieManagerKit\Support\{CookieForm, Text};
 
 /**
  * What an admin can do with a finding. Approving is the only path from a finding to a Service, which is what
@@ -68,7 +68,9 @@ final class Review
         }
 
         // The declaration block lists cookies per service; a cookie the scanner found starts as a row the admin completes.
-        if ($finding->getKind() === ScanFinding::COOKIE && mb_strlen($finding->getName()) <= Cookie::MAX_NAME) {
+        if ($finding->getKind() === ScanFinding::COOKIE && mb_strlen($finding->getName()) <= Cookie::MAX_NAME
+            && ($service->getCookie($finding->getName()) !== null || count($service->getCookies()) < CookieForm::MAX_ROWS)
+        ) {
             $service->addCookie($finding->getName());
         }
 

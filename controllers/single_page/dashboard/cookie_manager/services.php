@@ -129,8 +129,19 @@ class Services extends DashboardPageController
             $service->setContent($locale, $description);
         }
 
+        if (CookieForm::exceeds($this->post('cookies'))) {
+            $this->flash('error', t('Too many cookie rows were submitted. Nothing was saved.'));
+
+            return $this->buildRedirect($back)->send();
+        }
+
+        $cookieListSkipped = false;
+
         try {
             CookieForm::apply($service, CookieForm::parse($this->post('cookies'), array_keys(SiteLocales::options())));
+        } catch (\OverflowException) {
+            // Saving the list would delete the cookies the form cannot show, so the list is left exactly as stored.
+            $cookieListSkipped = true;
         } catch (\InvalidArgumentException) {
             $this->flash('error', t('Two cookies cannot swap or reuse names in one save. Save one change at a time.'));
 
@@ -140,6 +151,12 @@ class Services extends DashboardPageController
         $this->entityManager->persist($service);
         $this->entityManager->flush();
         Catalog::flush();
+
+        if ($cookieListSkipped) {
+            $this->flash('error', t('The service was saved, but its cookie list was not changed because it holds more cookies than this form can edit.'));
+
+            return $this->buildRedirect($back)->send();
+        }
 
         $this->flash('success', t('Service saved.'));
 

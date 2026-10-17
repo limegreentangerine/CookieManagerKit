@@ -11,13 +11,32 @@ use CookieManagerKit\Entity\{Cookie, Service};
  */
 final class CookieForm
 {
-    public const MAX_ROWS = 50;
+    private const BLANK_ROWS = 3;
+    public const MAX_ROWS = 500;
 
     private static function persistedId(Cookie $cookie): ?int
     {
         $property = new \ReflectionProperty(BaseEntity::class, 'id');
 
         return $property->isInitialized($cookie) ? $cookie->getID() : null;
+    }
+
+    /** Rows the form renders: every stored cookie, plus a few blank ones while there is room under the cap. */
+    public static function formRows(int $stored): int
+    {
+        return $stored + max(0, min(self::BLANK_ROWS, self::MAX_ROWS - $stored));
+    }
+
+    /** True when more rows were posted than the form can ever render, so parse() would silently drop the rest. */
+    public static function exceeds(mixed $posted): bool
+    {
+        return is_array($posted) && count($posted) > self::MAX_ROWS;
+    }
+
+    /** True when the service already stores more cookies than the form can show and save back. */
+    public static function overflows(Service $service): bool
+    {
+        return count($service->getCookies()) > self::MAX_ROWS;
     }
 
     /**
@@ -70,9 +89,15 @@ final class CookieForm
      * @param list<array{id: ?int, name: string, days: int, purposes: array<string, string>}> $rows
      *
      * @throws \InvalidArgumentException when the rows would swap, reuse or double up cookie names
+     * @throws \OverflowException        when the service stores more cookies than the form can carry, because saving
+     *                                   would delete the ones it could not show
      */
     public static function apply(Service $service, array $rows): void
     {
+        if (self::overflows($service)) {
+            throw new \OverflowException('Too many cookies for the form to save safely.');
+        }
+
         $byId = [];
         $byName = [];
         $originals = [];

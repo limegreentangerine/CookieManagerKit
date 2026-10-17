@@ -116,7 +116,7 @@ use CookieManagerKit\Support\Output as O;
         <h3 class="h5"><?php echo t('Cookies') ?></h3>
         <p class="text-muted"><?php echo t('The cookies this service sets, shown in the cookie declaration. Leave the name empty to remove a row.') ?> <?php echo t('0 days means the cookie lasts for the browser session') ?></p>
         <?php $cookieRows = $isNew ? [] : $service->getCookies()->toArray();
-        $blankRows = min(CookieForm::MAX_ROWS, count($cookieRows) + 3); ?>
+        $blankRows = CookieForm::formRows(count($cookieRows)); ?>
         <div class="table-responsive">
         <table class="table table-sm mb-4">
             <thead>

@@ -46,6 +46,21 @@ final class ReviewTest extends TestCase
         $this->assertSame(0, $service->getCookie('_ga')->getDurationDays());
     }
 
+    public function testApprovingStopsAddingCookiesOnceTheServiceIsFull(): void
+    {
+        $category = self::category('analytics');
+        $service = (new Service())->setName('GA')->setCategory($category);
+
+        for ($i = 0; $i < \CookieManagerKit\Support\CookieForm::MAX_ROWS; $i++) {
+            $service->addCookie('c' . $i);
+        }
+
+        Review::approve(self::finding(ScanFinding::COOKIE, '_extra', 'x.example'), $category, $service, '', '');
+
+        $this->assertNull($service->getCookie('_extra'));
+        $this->assertCount(\CookieManagerKit\Support\CookieForm::MAX_ROWS, $service->getCookies());
+    }
+
     public function testApprovingTheSameCookieTwiceDoesNotDuplicateIt(): void
     {
         $service = Review::approve(self::finding(ScanFinding::COOKIE, '_ga', 'example.com'), self::category('analytics'), null, 'A', 'G');

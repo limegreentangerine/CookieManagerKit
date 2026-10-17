@@ -220,8 +220,8 @@ class ConsentManager
      * iframe. A failure is reported and fails closed (every iframe is blocked), never open; the rewriter itself
      * also fails closed per iframe.
      *
-     * @param callable(): array{0: array<string, mixed>, 1: string, 2: string} $source [snapshot, locale, default locale]
-     * @param callable(\Throwable): void                                     $onError
+     * @param callable(): array{0: array<string, mixed>, 1: string, 2: string} $source  [snapshot, locale, default locale]
+     * @param callable(\Throwable): void                                       $onError
      */
     public static function rewriteEmbeds(string $contents, callable $source, callable $onError): string
     {

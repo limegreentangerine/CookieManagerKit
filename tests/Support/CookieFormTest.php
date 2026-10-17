@@ -60,14 +60,72 @@ final class CookieFormTest extends TestCase
         $this->assertSame(['en_GB' => 'aok'], $rows[0]['purposes']);
     }
 
-    public function testAtMostFiftyRowsAreKept(): void
+    public function testAtMostMaxRowsAreKept(): void
     {
         $posted = [];
-        for ($i = 0; $i < 80; $i++) {
+        for ($i = 0; $i < CookieForm::MAX_ROWS + 30; $i++) {
             $posted[] = ['name' => 'c' . $i];
         }
 
         $this->assertCount(CookieForm::MAX_ROWS, CookieForm::parse($posted, ['en_GB']));
+    }
+
+    public function testPostingMoreRowsThanTheCapIsReportedAsExceeding(): void
+    {
+        $posted = array_fill(0, CookieForm::MAX_ROWS + 1, ['name' => 'x']);
+
+        $this->assertTrue(CookieForm::exceeds($posted));
+        $this->assertFalse(CookieForm::exceeds(array_slice($posted, 0, CookieForm::MAX_ROWS)));
+        $this->assertFalse(CookieForm::exceeds(null));
+    }
+
+    public function testTheFormRendersEveryStoredCookieAndAFewBlankRows(): void
+    {
+        $this->assertSame(3, CookieForm::formRows(0));
+        $this->assertSame(63, CookieForm::formRows(60));
+        $this->assertSame(CookieForm::MAX_ROWS, CookieForm::formRows(CookieForm::MAX_ROWS - 1) - 0);
+        $this->assertSame(CookieForm::MAX_ROWS, CookieForm::formRows(CookieForm::MAX_ROWS));
+        $this->assertSame(CookieForm::MAX_ROWS + 20, CookieForm::formRows(CookieForm::MAX_ROWS + 20));
+    }
+
+    public function testSixtyStoredCookiesSurviveASaveOfTheRenderedRows(): void
+    {
+        $service = new Service();
+        $rows = [];
+        for ($i = 0; $i < 60; $i++) {
+            $this->persist($service->addCookie('c' . $i), $i + 1);
+            $rows[] = $this->row($i + 1, 'c' . $i);
+        }
+
+        $posted = [];
+        foreach ($rows as $row) {
+            $posted[] = ['id' => (string) $row['id'], 'name' => $row['name'], 'days' => '0'];
+        }
+
+        for ($i = 0; $i < 3; $i++) {
+            $posted[] = ['id' => '', 'name' => '', 'days' => '0'];
+        }
+
+        CookieForm::apply($service, CookieForm::parse($posted, ['en_GB']));
+
+        $this->assertCount(60, $service->getCookies());
+    }
+
+    public function testApplyRefusesAServiceWithMoreCookiesThanTheFormCanCarry(): void
+    {
+        $service = new Service();
+        for ($i = 0; $i < CookieForm::MAX_ROWS + 1; $i++) {
+            $service->addCookie('c' . $i);
+        }
+
+        $this->assertTrue(CookieForm::overflows($service));
+
+        try {
+            CookieForm::apply($service, []);
+            $this->fail('apply must refuse');
+        } catch (\OverflowException) {
+            $this->assertCount(CookieForm::MAX_ROWS + 1, $service->getCookies());
+        }
     }
 
     public function testApplyUpdatesAddsAndRemoves(): void
