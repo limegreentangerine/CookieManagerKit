@@ -50,11 +50,18 @@ class Service extends UpdatedEntity
      */
     protected $contents;
 
+    /**
+     * @ORM\OneToMany(targetEntity="Cookie", mappedBy="service", cascade={"persist", "remove"}, orphanRemoval=true)
+     * @ORM\OrderBy({"name": "ASC"})
+     */
+    protected $cookies;
+
     public function __construct()
     {
         parent::__construct();
 
         $this->contents = new ArrayCollection();
+        $this->cookies = new ArrayCollection();
     }
 
     public function getCategory(): ?Category
@@ -174,5 +181,39 @@ class Service extends UpdatedEntity
         $content->setDescription($description);
 
         return $content;
+    }
+
+    public function getCookies(): Collection
+    {
+        return $this->cookies;
+    }
+
+    public function getCookie(string $name): ?Cookie
+    {
+        foreach ($this->cookies as $cookie) {
+            if (strcasecmp($cookie->getName(), Text::plain($name, Cookie::MAX_NAME)) === 0) {
+                return $cookie;
+            }
+        }
+
+        return null;
+    }
+
+    public function addCookie(string $name): ?Cookie
+    {
+        $name = Text::plain($name, Cookie::MAX_NAME);
+
+        if ($name === '') {
+            return null;
+        }
+
+        $cookie = $this->getCookie($name);
+
+        if ($cookie === null) {
+            $cookie = (new Cookie())->setName($name)->setService($this);
+            $this->cookies->add($cookie);
+        }
+
+        return $cookie;
     }
 }

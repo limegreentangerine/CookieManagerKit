@@ -110,6 +110,8 @@ class Controller extends PackageController
         'cmkScanRuns',
         'cmkClassificationEntries',
         'cmkStats',
+        'cmkCookieContents',
+        'cmkCookies',
         'cmkServiceContents',
         'cmkCategoryContents',
         'cmkServices',
