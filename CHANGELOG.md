@@ -2,6 +2,25 @@
 
 Notable changes to this project are documented here.
 
+## 0.4.0
+
+Phase 3: audit log, re-consent, Consent Mode v2 and privacy rules.
+
+### Added
+
+- Consent Log (`/dashboard/cookie_manager/consent_log`): every choice a visitor makes is recorded under a random consent ID kept in their `cmk_consent` cookie (as `i`). A later change by the same browser adds an entry to the same record. Filter by date, trigger, policy version, category or consent ID, and download a CSV that includes the re-consent reason (filled only on entries made after a re-consent prompt). No IP address, region or raw user agent is stored in the consent log (the consent endpoint's rate limiter briefly keeps a hash of the IP address, as described for Statistics); the user agent is reduced to a coarse bucket such as `Chrome/desktop`.
+- Retention: the scheduled task "Purge old consent records" (`cmk_purge_consent_log`) deletes a browser's history a set number of months (default 24, Banner page) after its last choice.
+- Re-consent: asking visitors again now needs a reason, which is kept in a history shown on the Banner page and in the log export. Approving a scanner finding that adds a service to an optional category offers a one-click "Ask visitors again" (never automatic).
+- Google Consent Mode v2 (off by default, Banner page): every signal starts denied except `security_storage`, which is always granted, and the rest update from the visitor's choice (necessary → `security_storage` (always granted); analytics → `analytics_storage`; marketing → `ad_storage`, `ad_user_data`, `ad_personalization`; preferences → `functionality_storage`, `personalization_storage`).
+- Default model (Banner page): opt-in (default) or opt-out before a visitor chooses. Browsers that send Global Privacy Control always start with Marketing off, and the banner is still shown.
+
+### Upgrade notes
+
+- Run **Update** for the package in the dashboard. This creates the three consent tables, the Consent Log page, registers the purge task (tasks are only registered on install or upgrade) and records the current policy version as "Initial version".
+- Visitors who already have a consent cookie keep it. Their next choice creates their consent record.
+- Opt-out is not suitable for visitors in the EU or UK.
+- With opt-out, a visitor whose cookie is unreadable or who blocks cookies is treated as having made no choice, so optional categories run until they choose; a visitor whose stored choice is from an older policy version keeps their earlier refusals (a category they did not accept stays off, including categories added since) until they answer again; opt-in keeps optional categories off in every one of these cases.
+
 ## 0.3.0
 
 Phase 2: the scanner.

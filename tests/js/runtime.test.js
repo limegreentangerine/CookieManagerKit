@@ -197,7 +197,7 @@ describe('making a choice', () => {
 		expect(options.method).toBe('POST');
 		expect(options.credentials).toBe('same-origin');
 		expect(options.headers['Content-Type']).toBe('application/json');
-		expect(JSON.parse(options.body)).toEqual({ v: 2, c: ['necessary', 'preferences', 'analytics', 'marketing'] });
+		expect(JSON.parse(options.body)).toEqual({ v: 2, c: ['necessary', 'preferences', 'analytics', 'marketing'], g: 'accept_all', l: 'en_GB' });
 		expect(window.cmkRuntime.reload).not.toHaveBeenCalled();
 	});
 
@@ -867,5 +867,173 @@ describe('starting the scan-mode beacon', () => {
 		window.cmkRuntime.startBeacon();
 
 		expect(beaconScripts()[0].hasAttribute('nonce')).toBe(false);
+	});
+});
+
+
+describe('the consent id and the trigger', () => {
+	const GUID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+	const body = () => JSON.parse(window.fetch.mock.calls[0][1].body);
+
+	it('sends the trigger and locale and no id for a first-time visitor', () => {
+		mount();
+		button('Accept all').click();
+
+		expect(body()).toEqual({ v: 2, c: ['necessary', 'preferences', 'analytics', 'marketing'], g: 'accept_all', l: 'en_GB' });
+	});
+
+	it('classifies reject all and custom choices', () => {
+		mount();
+		button('Reject all').click();
+		expect(body().g).toBe('reject_all');
+	});
+
+	it('sends the id from the cookie on a later change, classified by the result not as "changed"', () => {
+		document.cookie = 'cmk_consent=' + encodeURIComponent(JSON.stringify({ v: 2, c: ['necessary'], t: 1700000000, i: GUID })) + '; Path=/';
+		mount();
+		window.cmkRuntime.open();
+		button('Customise')?.click();
+		button('Save').click();
+
+		expect(body().i).toBe(GUID);
+		expect(['reject_all', 'custom']).toContain(body().g);
+	});
+
+	it('uses the reconsent trigger and keeps the id after a policy bump', () => {
+		document.cookie = 'cmk_consent=' + encodeURIComponent(JSON.stringify({ v: 1, c: ['necessary', 'analytics'], t: 1700000000, i: GUID })) + '; Path=/';
+		mount();
+		button('Accept all').click();
+
+		expect(body().g).toBe('reconsent');
+		expect(body().i).toBe(GUID);
+	});
+
+	it('stores the id the server returns', async () => {
+		window.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, id: GUID }) }));
+		mount();
+		button('Accept all').click();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(window.cmk.id()).toBe(GUID);
+	});
+
+	it('ignores a hostile id in the reply and a reply with no json', async () => {
+		window.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, id: '"><script>' }) }));
+		mount();
+		button('Accept all').click();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(window.cmk.id()).toBe('');
+		expect(saved()).toContain('analytics');
+	});
+});
+
+describe('the default model and GPC in the banner', () => {
+	const setGpc = (value) => Object.defineProperty(window.navigator, 'globalPrivacyControl', { value, configurable: true });
+	const boxes = () => [...document.querySelectorAll('input[data-cmk-cat]')];
+	const box = (handle) => boxes().find((b) => b.getAttribute('data-cmk-cat') === handle);
+	const body = () => JSON.parse(window.fetch.mock.calls[0][1].body);
+
+	afterEach(() => {
+		delete window.navigator.globalPrivacyControl;
+	});
+
+	it('opt-in: optional boxes start unticked', () => {
+		mount(config(), { ...BOOT, model: 'opt_in' });
+		button('Customise').click();
+
+		expect(box('analytics').checked).toBe(false);
+	});
+
+	it('opt-out: optional boxes start ticked', () => {
+		mount(config(), { ...BOOT, model: 'opt_out' });
+		button('Customise').click();
+
+		expect(box('analytics').checked).toBe(true);
+		expect(box('marketing').checked).toBe(true);
+	});
+
+	it('GPC: marketing starts unticked with a note, the rest follow the model, the banner still shows', () => {
+		setGpc(true);
+		mount(config(), { ...BOOT, model: 'opt_out' });
+		button('Customise').click();
+
+		expect(root()).not.toBeNull();
+		expect(box('analytics').checked).toBe(true);
+		expect(box('marketing').checked).toBe(false);
+		expect(prefs().textContent).toContain('Global Privacy Control');
+	});
+
+	it('GPC: the note is plain text and appears only once, only for marketing', () => {
+		setGpc(true);
+		mount();
+		button('Customise').click();
+
+		expect(prefs().textContent.split('Global Privacy Control').length - 1).toBe(1);
+		expect(prefs().querySelector('script')).toBeNull();
+	});
+
+	it('no GPC note without GPC', () => {
+		mount();
+		button('Customise').click();
+
+		expect(prefs().textContent).not.toContain('Global Privacy Control');
+	});
+
+	it('GPC: confirming the starting selection unchanged logs the gpc trigger', () => {
+		setGpc(true);
+		mount(config(), { ...BOOT, model: 'opt_in' });
+		button('Customise').click();
+		button('Save').click();
+
+		expect(body().g).toBe('gpc');
+		expect(body().c).toEqual(['necessary']);
+	});
+
+	it('GPC: a different choice uses the normal trigger', () => {
+		setGpc(true);
+		mount();
+		button('Accept all').click();
+
+		expect(body().g).toBe('accept_all');
+	});
+
+	it('without GPC an unchanged selection is not logged as gpc', () => {
+		mount();
+		button('Customise').click();
+		button('Save').click();
+
+		expect(body().g).toBe('reject_all');
+	});
+
+	it('re-consent wins over gpc', () => {
+		setGpc(true);
+		document.cookie = 'cmk_consent=' + encodeURIComponent(JSON.stringify({ v: 1, c: ['necessary'], t: 1700000000 })) + '; Path=/';
+		mount();
+		button('Customise').click();
+		button('Save').click();
+
+		expect(body().g).toBe('reconsent');
+	});
+
+	it('opt-out: a prior rejecter from an older version sees unticked boxes and Accept all still reconsents', () => {
+		document.cookie = 'cmk_consent=' + encodeURIComponent(JSON.stringify({ v: 1, c: ['necessary'], t: 1700000000 })) + '; Path=/';
+		mount(config(), { ...BOOT, model: 'opt_out' });
+		button('Customise').click();
+
+		expect(box('analytics').checked).toBe(false);
+		expect(box('marketing').checked).toBe(false);
+		expect(box('preferences').checked).toBe(false);
+
+		button('Accept all').click();
+
+		expect(body().g).toBe('reconsent');
+	});
+
+	it('opt-out: nothing is posted or stored until the visitor acts', () => {
+		mount(config(), { ...BOOT, model: 'opt_out' });
+
+		expect(window.fetch).not.toHaveBeenCalled();
+		expect(window.cmk.get()).toBeNull();
 	});
 });

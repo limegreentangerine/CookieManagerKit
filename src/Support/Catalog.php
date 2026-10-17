@@ -14,7 +14,7 @@ use CookieManagerKit\Entity\{BannerContent, Category, Settings};
  */
 final class Catalog
 {
-    private const KEY = 'cookie_manager_kit/snapshot/v1';
+    private const KEY = 'cookie_manager_kit/snapshot/v2';
     private const LIFETIME = 43200;
 
     /** Built-in English text, used when an admin has not provided a value. */
@@ -89,6 +89,8 @@ final class Catalog
             'settings' => [
                 'policyVersion' => $settings->getPolicyVersion(),
                 'lifetimeDays' => $settings->getLifetimeDays(),
+                'consentMode' => $settings->isConsentModeEnabled(),
+                'defaultModel' => $settings->getDefaultModel(),
                 'widget' => $settings->isWidgetEnabled(),
                 'position' => $settings->getPosition(),
                 'layout' => $settings->getLayout(),
@@ -163,6 +165,18 @@ final class Catalog
     public static function lifetimeDays(): int
     {
         return (int) self::snapshot()['settings']['lifetimeDays'];
+    }
+
+    public static function consentMode(): bool
+    {
+        return (bool) (self::snapshot()['settings']['consentMode'] ?? false);
+    }
+
+    public static function defaultModel(): string
+    {
+        $model = self::snapshot()['settings']['defaultModel'] ?? 'opt_in';
+
+        return $model === 'opt_out' ? 'opt_out' : 'opt_in';
     }
 
     public static function defaultLocale(): string

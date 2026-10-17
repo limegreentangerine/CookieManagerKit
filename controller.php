@@ -10,7 +10,7 @@ use CookieManagerKit\Scan\ClassificationStore;
 use Concrete\Core\Support\Facade\{Events, Route};
 use CookieManagerKit\Support\{Catalog, Installer};
 use ClassKit\Package\Traits\{AttributeTrait, BlockTrait, PageTrait};
-use CookieManagerKit\Consent\{ConsentRecorder, NullConsentRecorder};
+use CookieManagerKit\Consent\{ConsentRecorder, DoctrineConsentLogStore, PersistingConsentRecorder};
 
 class Controller extends PackageController
 {
@@ -31,7 +31,7 @@ class Controller extends PackageController
      *
      * @var string
      */
-    protected $pkgVersion = '0.3.0';
+    protected $pkgVersion = '0.4.0';
 
     /**
      * The minimum Concrete version compatible with the package.
@@ -103,6 +103,9 @@ class Controller extends PackageController
      * @var array
      */
     protected $databaseTables = [
+        'cmkConsentLog',
+        'cmkConsentSubjects',
+        'cmkPolicyChanges',
         'cmkScanFindings',
         'cmkScanRuns',
         'cmkClassificationEntries',
@@ -125,6 +128,7 @@ class Controller extends PackageController
     protected $tasks = [
         'cmk_scan_crawl' => \CookieManagerKit\Command\Task\Controller\CrawlController::class,
         'cmk_refresh_classification' => \CookieManagerKit\Command\Task\Controller\RefreshClassificationController::class,
+        'cmk_purge_consent_log' => \CookieManagerKit\Command\Task\Controller\PurgeConsentLogController::class,
     ];
 
     public function getPackageName()
@@ -150,6 +154,7 @@ class Controller extends PackageController
         $this->addSinglePage('/dashboard/cookie_manager/scanner', $pkg, t('Scanner'), t('Scan the site for cookies and scripts'));
         $this->addSinglePage('/dashboard/cookie_manager/findings', $pkg, t('Findings'), t('Review what the scanner found'));
         $this->addSinglePage('/dashboard/cookie_manager/scan_settings', $pkg, t('Scanner Settings'), t('Crawl limits, alerts and classification data'));
+        $this->addSinglePage('/dashboard/cookie_manager/consent_log', $pkg, t('Consent Log'), t('Who consented to what, and when'));
 
         $em = app(EntityManagerInterface::class);
 
@@ -223,8 +228,7 @@ class Controller extends PackageController
 
     public function registerEvents(): void
     {
-        // Phase 3 rebinds this to a recorder that writes the audit log.
-        app()->bind(ConsentRecorder::class, NullConsentRecorder::class);
+        app()->bind(ConsentRecorder::class, static fn() => new PersistingConsentRecorder(new DoctrineConsentLogStore(app(EntityManagerInterface::class))));
 
         Events::addListener('on_before_render', function () {
             ConsentManager::onBeforeRender();

@@ -3,7 +3,7 @@
 namespace CookieManagerKit\Support;
 
 use Doctrine\ORM\EntityManagerInterface;
-use CookieManagerKit\Entity\{BannerContent, Category, Settings};
+use CookieManagerKit\Entity\{BannerContent, Category, PolicyVersionChange, Settings};
 
 /**
  * Default data created on install and upgrade. Idempotent: it only ever adds what is missing and never overwrites
@@ -11,6 +11,8 @@ use CookieManagerKit\Entity\{BannerContent, Category, Settings};
  */
 final class Installer
 {
+    public const INITIAL_REASON = 'Initial version';
+
     public const CATEGORIES = [
         [
             'handle' => 'necessary',
@@ -61,10 +63,35 @@ final class Installer
         ));
     }
 
+    /**
+     * The history row that records the version a site starts on, or null when history already exists.
+     */
+    public static function initialPolicyChange(?PolicyVersionChange $existing, int $version, int $now): ?PolicyVersionChange
+    {
+        if ($existing !== null) {
+            return null;
+        }
+
+        return (new PolicyVersionChange())->setVersion($version)->setReason(self::INITIAL_REASON)->setCreatedAt($now);
+    }
+
     public static function seed(EntityManagerInterface $em, string $locale): void
     {
         if ($em->getRepository(Settings::class)->findOneBy([]) === null) {
             $em->persist(new Settings());
+        }
+
+        // Settings::get() reads the row, so it has to be written before the first history row can name its version.
+        $em->flush();
+
+        $initial = self::initialPolicyChange(
+            $em->getRepository(PolicyVersionChange::class)->findOneBy([]),
+            Settings::get()->getPolicyVersion(),
+            time(),
+        );
+
+        if ($initial !== null) {
+            $em->persist($initial);
         }
 
         $existing = [];

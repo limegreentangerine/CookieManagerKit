@@ -165,6 +165,12 @@
 	font-size: 0.93em;
 }
 
+.cmk__note {
+	margin: 0.25rem 0 0;
+	font-size: 0.85em;
+	opacity: 0.8;
+}
+
 .cmk__services,
 .cmk__cookies {
 	margin: 6px 0 0;

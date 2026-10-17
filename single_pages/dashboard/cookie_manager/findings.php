@@ -13,6 +13,7 @@ use CookieManagerKit\Support\Output as O;
 /** @var int $total */
 /** @var array<string, array{id: int, title: string}> $categories handle => id and title */
 /** @var CookieManagerKit\Entity\Service[] $services */
+/** @var string|null $reconsent */
 
 $statusLabels = [
     ScanFinding::UNCLASSIFIED => t('Unclassified'),
@@ -32,6 +33,20 @@ $kindLabels = [
 $when = static fn(int $time): string => gmdate('Y-m-d H:i', $time) . ' UTC';
 $handles = array_keys($categories);
 ?>
+<?php if ($reconsent !== null) { ?>
+    <div class="alert alert-info">
+        <form method="post" action="<?php echo O::e($view->action('ask_again')) ?>" class="row g-2 align-items-end">
+            <?php echo $token->output('submit') ?>
+            <div class="col-md-8">
+                <label class="form-label" for="cmk-reconsent-reason"><?php echo t('A service in an optional category was added. Ask every visitor again?') ?></label>
+                <input type="text" class="form-control" maxlength="500" id="cmk-reconsent-reason" name="reason" value="<?php echo O::e($reconsent) ?>">
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary"><?php echo t('Ask visitors again') ?></button>
+            </div>
+        </form>
+    </div>
+<?php } ?>
 <form method="get" class="row g-3 align-items-end mb-4">
     <div class="col-auto">
         <label class="form-label" for="cmk-status"><?php echo t('Status') ?></label>

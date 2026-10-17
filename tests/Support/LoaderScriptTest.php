@@ -53,7 +53,7 @@ final class LoaderScriptTest extends TestCase
     {
         $boot = LoaderScript::boot(3, ['necessary', 'analytics'], 180, '/cfg.json?v=a', '/post', 'abcDEF123456==', '/event');
 
-        $this->assertSame(['v', 'cats', 'days', 'cfg', 'post', 'event', 'scan', 'nonce'], array_keys($boot));
+        $this->assertSame(['v', 'cats', 'days', 'cfg', 'post', 'event', 'scan', 'nonce', 'cm', 'model'], array_keys($boot));
         $this->assertSame(3, $boot['v']);
         $this->assertSame(['necessary', 'analytics'], $boot['cats']);
         $this->assertSame(180, $boot['days']);
@@ -102,5 +102,26 @@ final class LoaderScriptTest extends TestCase
         foreach (['<', '>', '&', "'"] as $char) {
             $this->assertStringNotContainsString($char, $json);
         }
+    }
+
+    public function testBootCarriesTheComplianceFlags(): void
+    {
+        $boot = LoaderScript::boot(2, ['necessary'], 180, '/c', '/p', null, '', '', true, 'opt_out');
+
+        $this->assertTrue($boot['cm']);
+        $this->assertSame('opt_out', $boot['model']);
+    }
+
+    public function testBootDefaultsToConsentModeOffAndOptIn(): void
+    {
+        $boot = LoaderScript::boot(2, ['necessary'], 180, '/c', '/p', null);
+
+        $this->assertFalse($boot['cm']);
+        $this->assertSame('opt_in', $boot['model']);
+    }
+
+    public function testAHostileModelIsNeverEmitted(): void
+    {
+        $this->assertSame('opt_in', LoaderScript::boot(2, [], 180, '/c', '/p', null, '', '', false, '"><script>')['model']);
     }
 }

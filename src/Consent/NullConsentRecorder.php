@@ -4,5 +4,8 @@ namespace CookieManagerKit\Consent;
 
 final class NullConsentRecorder implements ConsentRecorder
 {
-    public function record(ConsentChoice $choice): void {}
+    public function record(ConsentChoice $choice): ?string
+    {
+        return null;
+    }
 }

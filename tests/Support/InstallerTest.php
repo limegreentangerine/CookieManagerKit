@@ -6,6 +6,7 @@ namespace CookieManagerKit\Tests\Support;
 
 use PHPUnit\Framework\TestCase;
 use CookieManagerKit\Support\{Installer, Text};
+use CookieManagerKit\Entity\PolicyVersionChange;
 
 final class InstallerTest extends TestCase
 {
@@ -69,5 +70,38 @@ final class InstallerTest extends TestCase
     public function testNothingIsReportedForAFullSet(): void
     {
         $this->assertSame([], $this->missing(['necessary', 'preferences', 'analytics', 'marketing']));
+    }
+
+    public function testTheInitialPolicyChangeRecordsTheCurrentVersion(): void
+    {
+        $change = Installer::initialPolicyChange(null, 3, 1700000000);
+
+        $this->assertInstanceOf(PolicyVersionChange::class, $change);
+        $this->assertSame(3, $change->getVersion());
+        $this->assertSame(Installer::INITIAL_REASON, $change->getReason());
+        $this->assertSame('Initial version', $change->getReason());
+        $this->assertSame(1700000000, $change->getCreatedAt());
+    }
+
+    public function testTheInitialPolicyChangeIsIdempotent(): void
+    {
+        $this->assertNull(Installer::initialPolicyChange(new PolicyVersionChange(), 3, 1700000000));
+    }
+
+    public function testSeedPersistsWhatInitialPolicyChangeDecides(): void
+    {
+        // Settings::get() needs the Concrete container, so seed() cannot run here; check it is wired to the decision.
+        $method = new \ReflectionMethod(Installer::class, 'seed');
+        $lines = array_slice(
+            file((string) $method->getFileName()) ?: [],
+            $method->getStartLine() - 1,
+            $method->getEndLine() - $method->getStartLine() + 1,
+        );
+        $source = implode('', $lines);
+
+        $this->assertStringContainsString('self::initialPolicyChange(', $source);
+        $this->assertStringContainsString('findOneBy([])', $source);
+        $this->assertStringContainsString('Settings::get()->getPolicyVersion()', $source);
+        $this->assertStringContainsString('$em->persist($initial)', $source);
     }
 }

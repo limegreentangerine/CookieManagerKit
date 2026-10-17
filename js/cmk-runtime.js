@@ -219,9 +219,21 @@
 		return handles;
 	}
 
-	function post(categories) {
+	function post(categories, trigger) {
 		if (!boot.post || typeof w.fetch !== 'function') {
 			return;
+		}
+
+		var body = { v: boot.v, c: categories, g: trigger };
+		var locale = String((state.config && state.config.locale) || '');
+		var id = cmk && typeof cmk.id === 'function' ? cmk.id() : '';
+
+		if (locale) {
+			body.l = locale;
+		}
+
+		if (id) {
+			body.i = id;
 		}
 
 		try {
@@ -230,10 +242,21 @@
 				credentials: 'same-origin',
 				keepalive: true,
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ v: boot.v, c: categories })
-			}).catch(function () {
-				/* the choice is already saved in the browser; the acknowledgement is best effort */
-			});
+				body: JSON.stringify(body)
+			})
+				.then(function (response) {
+					return response && response.ok && typeof response.json === 'function'
+						? response.json()
+						: null;
+				})
+				.then(function (reply) {
+					if (reply && typeof reply.id === 'string') {
+						cmk.setId(reply.id); /* refuses anything that is not a GUID */
+					}
+				})
+				.catch(function () {
+					/* the choice is already saved in the browser; the acknowledgement is best effort */
+				});
 		} catch (e) {
 			/* same */
 		}
@@ -280,11 +303,7 @@
 		track('shown');
 	}
 
-	function choiceEvent(previous, saved, categories) {
-		if (previous) {
-			return 'changed';
-		}
-
+	function classify(saved, categories) {
 		if (saved.length === 1) {
 			return 'reject_all';
 		}
@@ -294,6 +313,33 @@
 		})
 			? 'accept_all'
 			: 'custom';
+	}
+
+	/* For the statistics: a later change is its own metric. */
+	function choiceEvent(previous, saved, categories) {
+		return previous ? 'changed' : classify(saved, categories);
+	}
+
+	/* For the audit log: what the visitor chose, or that they were asked again because the policy changed. */
+	function sameSet(a, b) {
+		return (
+			a.length === b.length &&
+			a.every(function (handle) {
+				return b.indexOf(handle) !== -1;
+			})
+		);
+	}
+
+	function triggerFor(reconsent, previous, saved, categories) {
+		if (reconsent) {
+			return 'reconsent';
+		}
+
+		if (!previous && cmk.gpc() && sameSet(saved, cmk.initial())) {
+			return 'gpc';
+		}
+
+		return classify(saved, categories);
 	}
 
 	function close(restoreFocus) {
@@ -323,15 +369,17 @@
 
 	function commit(handles) {
 		var previous = cmk.get();
+		var reconsent = cmk.reconsent();
 		var saved = cmk.save(handles);
+		var categories = validCategories(state.config);
 		var withdrew =
 			previous &&
 			previous.c.some(function (handle) {
 				return saved.indexOf(handle) === -1;
 			});
 
-		post(saved);
-		track(choiceEvent(previous, saved, validCategories(state.config)));
+		post(saved, triggerFor(reconsent, previous, saved, categories));
+		track(choiceEvent(previous, saved, categories));
 		close(true);
 
 		if (withdrew) {
@@ -343,7 +391,9 @@
 		var banner = config.banner || {};
 		var labels = banner.labels || {};
 		var style = config.style || {};
-		var granted = cmk.get() ? cmk.get().c : [];
+		var stored = cmk.get();
+		var granted = stored ? stored.c : cmk.initial();
+		var gpcNote = !stored && cmk.gpc();
 		var categories = validCategories(config);
 
 		var root = el('div', {
@@ -386,6 +436,12 @@
 						? el('p', { class: 'cmk__cat-desc' }, lines(category.description))
 						: null,
 					servicesList(category),
+					gpcNote && category.handle === 'marketing'
+						? el('p', {
+								class: 'cmk__note',
+								text: "Pre-set by your browser's Global Privacy Control signal."
+							})
+						: null,
 					necessary ? cookiesList(category) : null
 				])
 			);

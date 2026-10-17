@@ -95,6 +95,8 @@ class ConsentManager
             $nonce,
             self::path('/cookie-manager/event'),
             self::path('/cookie-manager/scan/beacon.js'),
+            Catalog::consentMode(),
+            Catalog::defaultModel(),
         );
 
         $controller->addHeaderItem(LoaderScript::inline($boot, $nonce));

@@ -7,6 +7,7 @@ use CookieManagerKit\Support\Output as O;
 /** @var string $defaultLocale */
 /** @var array<string, CookieManagerKit\Entity\BannerContent> $contents */
 /** @var CookieManagerKit\Entity\Settings $settings */
+/** @var list<CookieManagerKit\Entity\PolicyVersionChange> $history */
 
 $pageSelector = app('helper/form/page_selector');
 $defaults = Catalog::DEFAULTS;
@@ -96,10 +97,51 @@ foreach ($locales as $locale => $label) {
         </div>
 
         <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" id="consentMode" name="consentMode" value="1" <?php echo O::e($settings->isConsentModeEnabled() ? 'checked' : '') ?>>
+            <label class="form-check-label" for="consentMode"><?php echo t('Send Google Consent Mode v2 signals') ?></label>
+            <div class="help-block form-text"><?php echo t('Starts every signal denied except security_storage (always granted), then updates ad_storage, ad_user_data, ad_personalization, analytics_storage, functionality_storage and personalization_storage from the visitor\'s choice. Scripts are still blocked by category as before.') ?></div>
+        </div>
+
+        <div class="form-group mb-3">
+            <label class="form-label" for="defaultModel"><?php echo t('Before a visitor chooses') ?></label>
+            <select class="form-select" style="max-width: 24rem" id="defaultModel" name="defaultModel">
+                <option value="opt_in" <?php echo O::e($settings->getDefaultModel() === 'opt_in' ? 'selected' : '') ?>><?php echo t('Optional cookies are off until they agree (opt-in)') ?></option>
+                <option value="opt_out" <?php echo O::e($settings->getDefaultModel() === 'opt_out' ? 'selected' : '') ?>><?php echo t('Optional cookies are on until they object (opt-out)') ?></option>
+            </select>
+            <div class="help-block form-text"><?php echo t('Opt-out is not suitable for visitors in the EU or UK. A browser that sends Global Privacy Control always starts with Marketing off.') ?></div>
+        </div>
+
+        <div class="form-group mb-3">
+            <label class="form-label" for="retentionMonths"><?php echo t('Keep a browser\'s consent history for (months after its last choice)') ?></label>
+            <input type="number" class="form-control" style="max-width: 12rem" id="retentionMonths" name="retentionMonths" min="1" max="120" step="1" value="<?php echo O::e($settings->getConsentLogRetentionMonths()) ?>">
+            <div class="help-block form-text"><?php echo t('Between 1 and 120. Older records are deleted by the "Purge old consent records" scheduled task and cannot be recovered.') ?></div>
+        </div>
+
+        <div class="form-check mb-3">
             <input type="checkbox" class="form-check-input" id="askAgain" name="askAgain" value="1">
             <label class="form-check-label" for="askAgain"><?php echo t('Ask every visitor again') ?></label>
             <div class="help-block form-text"><?php echo O::e(t('Tick this when your cookie policy changes. Current policy version: %s.', $settings->getPolicyVersion())) ?></div>
         </div>
+        <div class="form-group mb-3">
+            <label class="form-label" for="askAgainReason"><?php echo t('Why are visitors being asked again?') ?></label>
+            <input type="text" class="form-control" maxlength="500" id="askAgainReason" name="askAgainReason" value="">
+            <div class="help-block form-text"><?php echo t('Required when the box above is ticked. Kept in the consent log and its export.') ?></div>
+        </div>
+
+        <?php if ($history !== []) { ?>
+            <table class="table table-sm">
+                <thead><tr><th><?php echo t('Version') ?></th><th><?php echo t('Date (UTC)') ?></th><th><?php echo t('Reason') ?></th></tr></thead>
+                <tbody>
+                <?php foreach ($history as $change) { ?>
+                    <tr>
+                        <td><?php echo O::e($change->getVersion()) ?></td>
+                        <td><?php echo O::e(gmdate('Y-m-d H:i', $change->getCreatedAt())) ?></td>
+                        <td><?php echo O::e($change->getReason()) ?></td>
+                    </tr>
+                <?php } ?>
+                </tbody>
+            </table>
+        <?php } ?>
     </fieldset>
 
     <div class="ccm-dashboard-form-actions-wrapper">

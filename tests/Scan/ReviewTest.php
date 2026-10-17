@@ -260,4 +260,24 @@ final class ReviewTest extends TestCase
         $this->assertNotSame($inactive, $finding->getService());
         $this->assertSame($created[0], $finding->getService());
     }
+
+    public function testReconsentIsOfferedOnlyForOptionalCategories(): void
+    {
+        $analytics = (new Category())->setHandle('analytics')->setNecessary(false);
+        $necessary = (new Category())->setHandle('necessary')->setNecessary(true);
+
+        $this->assertSame('Added Google Analytics to analytics', Review::reconsentReason((new Service())->setName('Google Analytics')->setCategory($analytics)));
+        $this->assertNull(Review::reconsentReason((new Service())->setName('Session')->setCategory($necessary)));
+        $this->assertNull(Review::reconsentReason(new Service()));
+    }
+
+    public function testTheReasonIsPlainTextAndCapped(): void
+    {
+        $category = (new Category())->setHandle('marketing')->setNecessary(false);
+        $reason = Review::reconsentReason((new Service())->setName("<b>Evil</b>\x00" . str_repeat('x', 900))->setCategory($category));
+
+        $this->assertNotNull($reason);
+        $this->assertLessThanOrEqual(500, mb_strlen($reason));
+        $this->assertStringNotContainsString("\x00", $reason);
+    }
 }

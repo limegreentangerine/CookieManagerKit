@@ -3,9 +3,9 @@
 namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\CookieManager;
 
 use Concrete\Core\Page\Controller\DashboardPageController;
-use CookieManagerKit\Support\{Catalog, SiteLocales, Text};
-use CookieManagerKit\Entity\{Category, ScanFinding, Service};
 use CookieManagerKit\Scan\{ClassificationStore, Review, Services};
+use CookieManagerKit\Entity\{Category, ScanFinding, Service, Settings};
+use CookieManagerKit\Support\{Catalog, PolicyVersions, SiteLocales, Text};
 
 /**
  * Review queue. Listing and filtering read only; every action that changes data is a POST with a CSRF token, takes
@@ -82,6 +82,13 @@ class Findings extends DashboardPageController
         return '';
     }
 
+    private function suggestReconsent(?string $reason): void
+    {
+        if ($reason !== null) {
+            $this->app->make('session')->getFlashBag()->set('cmk_reconsent', [$reason]);
+        }
+    }
+
     public function view()
     {
         $status = $this->choice('status', ScanFinding::STATUSES);
@@ -118,6 +125,37 @@ class Findings extends DashboardPageController
         $this->set('total', $total);
         $this->set('categories', $categories);
         $this->set('services', $this->entityManager->getRepository(Service::class)->findBy([], ['name' => 'ASC']));
+
+        $suggested = $this->app->make('session')->getFlashBag()->get('cmk_reconsent');
+        $this->set('reconsent', is_array($suggested) && isset($suggested[0]) && is_string($suggested[0]) ? $suggested[0] : null);
+    }
+
+    public function ask_again()
+    {
+        if (!$this->request->isPost()) {
+            return $this->buildRedirect(self::URL)->send();
+        }
+
+        if (!$this->token->validate('submit')) {
+            $this->flash('error', $this->token->getErrorMessage());
+
+            return $this->buildRedirect(self::URL)->send();
+        }
+
+        try {
+            PolicyVersions::bump($this->entityManager, Settings::get(), Text::plain($this->post('reason'), 500), (int) (new \Concrete\Core\User\User())->getUserID());
+        } catch (\InvalidArgumentException) {
+            $this->flash('error', t('Say why visitors are being asked again, so the log can explain it.'));
+
+            return $this->buildRedirect(self::URL)->send();
+        }
+
+        $this->entityManager->flush();
+        Catalog::flush();
+
+        $this->flash('success', t('Visitors will be asked again.'));
+
+        return $this->buildRedirect(self::URL)->send();
     }
 
     public function approve()
@@ -160,6 +198,7 @@ class Findings extends DashboardPageController
         $this->entityManager->persist($service);
         $this->entityManager->flush();
         Catalog::flush();
+        $this->suggestReconsent(Review::reconsentReason($service));
 
         $this->flash('success', t('Finding approved.'));
 
@@ -327,6 +366,10 @@ class Findings extends DashboardPageController
 
         $this->entityManager->flush();
         Catalog::flush();
+
+        foreach ($created as $service) {
+            $this->suggestReconsent(Review::reconsentReason($service));
+        }
 
         $this->flash('success', t('Approved matched findings. %s new services were created.', count($created)));
 
