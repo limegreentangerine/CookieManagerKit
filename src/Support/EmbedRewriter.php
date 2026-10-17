@@ -32,7 +32,12 @@ namespace CookieManagerKit\Support;
  * extends past a `>` for a quote that opens an attribute value (never an apostrophe in text), only reads a `src` in
  * attribute-name position, only the first one (a browser uses the first), and treats any `srcdoc` as "loads nothing".
  *
- * The caller must never run this on edit-mode or dashboard output; it is for visitor-facing page output only.
+ * Accepted limits: a page with more than 1000 `<iframe` or more than 4 MB is fully blocked with ` srcdoc` (unmatched
+ * iframes too, no placeholders); the fail-closed path inserts that text into any context, including scripts and
+ * comments; the server's ICU version can differ from a browser's IDNA tables, which is handled by guess() (a host that
+ * fails validation is read with every character outside [a-z0-9.-] deleted and matched at a label boundary).
+ *
+ * Call rewrite() only on public front-end page output, never on edit-mode or dashboard output.
  *
  * Known limits: iframes inside `srcdoc` attribute content, relative `src` values resolved against `<base href>`, and
  * `<object>`, `<embed>` and `<frame>` are out of scope.
@@ -86,7 +91,7 @@ final class EmbedRewriter
      * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}>                                                                                    $services
      * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>} $ctx
      *
-     * @return list<array{at: int, nameEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, url: string, values: array<string, string>}>
+     * @return list<array{at: int, nameEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, values: array<string, string>}>
      */
     private static function occurrences(string $html, array $services, array &$ctx): array
     {
@@ -117,7 +122,7 @@ final class EmbedRewriter
                 continue;
             }
 
-            $service = $parsed['host'] !== null ? self::matchHost($parsed['host'], $services) : self::named($parsed['authority'], $services);
+            $service = $parsed['host'] !== null ? self::matchHost($parsed['host'], $services) : (($parsed['guess'] !== null ? self::matchHost($parsed['guess'], $services) : null) ?? self::named($parsed['authority'], $services));
 
             if ($service === null || !Text::isHandle($service['category'])) {
                 continue;
@@ -128,7 +133,6 @@ final class EmbedRewriter
                 'nameEnd' => $at + 7,
                 'attrs' => $tag['attrs'],
                 'service' => $service,
-                'url' => $parsed['url'],
                 'values' => $values,
             ];
         }
@@ -262,8 +266,7 @@ final class EmbedRewriter
      * (so later iframes get no placeholder) wherever the reading could differ from a browser's.
      *
      * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>} $ctx
-     *
-     * @param array<int, int> $real filled in as iframes are confirmed
+     * @param array<int, int>                                                                                                                                                              $real filled in as iframes are confirmed
      */
     private static function real(string $html, array &$ctx, array &$real): void
     {
@@ -360,9 +363,9 @@ final class EmbedRewriter
     }
 
     /**
-     * @param list<array{at: int, nameEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, url: string, values: array<string, string>}> $found
-     * @param array{message: string, accept: string, customise: string}                                                                                                                                                                              $text
-     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>}                                                           $ctx
+     * @param list<array{at: int, nameEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, values: array<string, string>}> $found
+     * @param array{message: string, accept: string, customise: string}                                                                                                                                                                 $text
+     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>}                                              $ctx
      *
      * @return array<int, array{0: int, 1: int, 2: int, 3: string}> keyed by offset * 4 + order; offset, order, bytes to delete, text to insert
      */
@@ -614,7 +617,10 @@ final class EmbedRewriter
         $text = str_replace(["\xC2\xAD", "\xE2\x80\x8B", "\xE2\x80\x8C", "\xE2\x80\x8D", "\xE2\x81\xA0", "\xEF\xBB\xBF", "\xCD\x8F", "\xE3\x80\x82", "\xEF\xBD\xA1", '\\'], ['', '', '', '', '', '', '', '.', '.', '/'], $text);
         $text = strtolower(mb_strtolower($text, 'UTF-8'));
 
-        return self::str(preg_replace('~/{2,}~', '//', $text));
+        $text = self::str(preg_replace('~/{2,}~', '//', $text));
+
+        // The authority keeps only [a-z0-9.@:-], like guess(): characters a browser ignores must not hide a domain.
+        return self::str(preg_replace_callback('~(?:https?:|//)/*+([^/?#\s"\'>]*)~', static fn(array $m): string => substr($m[0], 0, strlen($m[0]) - strlen($m[1])) . self::str(preg_replace('~[^a-z0-9.@:-]+~', '', $m[1])), $text, 1));
     }
 
     /**
@@ -672,7 +678,7 @@ final class EmbedRewriter
      * turns backslashes into slashes, treats a scheme-relative start as https, and ignores userinfo and port. Only
      * http(s) is returned. `host` is null when the host cannot be validated; `authority` is then the raw section.
      *
-     * @return array{url: string, authority: string, host: string|null}|null
+     * @return array{authority: string, host: string|null, guess: string|null}|null
      */
     private static function parse(string $url): ?array
     {
@@ -695,17 +701,39 @@ final class EmbedRewriter
         $at = strrpos($authority, '@');
         $hostPart = $at === false ? $authority : substr($authority, $at + 1);
 
-        if (str_starts_with($hostPart, '[')) {
-            $host = null;
-        } else {
-            $host = self::cleanHost(self::str(preg_replace('/:\d*+\z/', '', $hostPart)));
+        $host = null;
+        $guess = null;
+
+        if (!str_starts_with($hostPart, '[')) {
+            $hostPart = self::str(preg_replace('/:\d*+\z/', '', $hostPart));
+            $host = self::cleanHost($hostPart);
+            $guess = $host === null ? self::guess($hostPart) : null;
         }
 
         return [
-            'url' => $scheme . '://' . $rest,
             'authority' => $host === null ? $authority . $afterAuthority : $authority,
             'host' => $host,
+            'guess' => $guess,
         ];
+    }
+
+    /**
+     * Fail-toward-blocking reading of a host that could not be validated (the server's IDNA tables can lag a
+     * browser's, which ignores characters ours rejects): NFKC, lower-case, ideographic dots to dots, every character
+     * outside [a-z0-9.-] deleted, edge dots trimmed. Only ever used for hosts that already failed validation.
+     */
+    private static function guess(string $host): ?string
+    {
+        $host = rawurldecode($host);
+
+        if (class_exists(\Normalizer::class)) {
+            $host = \Normalizer::normalize($host, \Normalizer::FORM_KC) ?: $host;
+        }
+
+        $host = str_replace(["\xE3\x80\x82", "\xEF\xBC\x8E", "\xEF\xBD\xA1"], '.', mb_strtolower($host, 'UTF-8'));
+        $host = trim(self::str(preg_replace('/[^a-z0-9.-]+/', '', strtolower($host))), '.');
+
+        return $host === '' ? null : $host;
     }
 
     private static function cleanHost(string $host): ?string

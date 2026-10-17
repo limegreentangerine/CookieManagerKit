@@ -550,4 +550,55 @@ final class EmbedRewriterTest extends TestCase
             $this->assertSame([], $coarse->invoke(null, '<iframe src="' . $url . '"></iframe>', self::SERVICES), $url);
         }
     }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function ignoredCharacters(): iterable
+    {
+        $points = ['115F' => "\u{115F}", '1160' => "\u{1160}", '3164' => "\u{3164}", 'FFA0' => "\u{FFA0}", '17B4' => "\u{17B4}", '17B5' => "\u{17B5}", '180E' => "\u{180E}", '206A' => "\u{206A}", '1D173' => "\u{1D173}", '1D17A' => "\u{1D17A}", '2064' => "\u{2064}"];
+
+        foreach ($points as $hex => $char) {
+            yield "U+$hex numeric" => ['<iframe src="https://www.you&#x' . $hex . ';tube.com/embed/x"></iframe>'];
+            yield "U+$hex literal" => ['<iframe src="https://www.you' . $char . 'tube.com/embed/x"></iframe>'];
+            yield "U+$hex percent" => ['<iframe src="https://www.you' . rawurlencode($char) . 'tube.com/embed/x"></iframe>'];
+        }
+
+        yield 'double hyphen label' => ['<iframe src="https://ab--cd.ｙoutube.com/x"></iframe>'];
+        yield 'ideographic dot' => ['<iframe src="https://www.you&#x115F;tube。com/x"></iframe>'];
+    }
+
+    #[DataProvider('ignoredCharacters')]
+    public function testHostsWithCharactersABrowserIgnoresAreStillBlocked(string $html): void
+    {
+        $out = $this->rewrite($html);
+
+        $this->assertStringContainsString(self::MARKETING, $out);
+        $this->assertSame([], EmbedRewriter::audit($out, self::SERVICES));
+        $this->assertSame($out, $this->rewrite($out), 'idempotent');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function ignoredCharacterLookalikes(): iterable
+    {
+        $f = "\u{115F}";
+
+        yield 'filler between evil and youtube' => ['<iframe src="https://evil' . $f . 'youtube.com/x"></iframe>'];
+        yield 'filler before dot' => ['<iframe src="https://youtube.com' . $f . '.evil.com/x"></iframe>'];
+        yield 'filler inside tld' => ['<iframe src="https://youtube.c' . $f . 'om.evil.com/x"></iframe>'];
+        yield 'plain lookalike' => ['<iframe src="https://evilyoutube.com/x"></iframe>'];
+        yield 'plain suffix' => ['<iframe src="https://youtube.com.evil.com/x"></iframe>'];
+        yield 'userinfo' => ['<iframe src="https://youtube.com@evil.com/x"></iframe>'];
+        yield 'userinfo with filler' => ['<iframe src="https://youtube.com' . $f . '@evil.com/x"></iframe>'];
+        yield 'filler in path' => ['<iframe src="https://evil.com/you' . $f . 'tube.com"></iframe>'];
+    }
+
+    #[DataProvider('ignoredCharacterLookalikes')]
+    public function testLookalikesWithIgnoredCharactersAreNotBlocked(string $html): void
+    {
+        $this->assertSame($html, $this->rewrite($html));
+        $this->assertSame([], $this->errors);
+    }
 }
