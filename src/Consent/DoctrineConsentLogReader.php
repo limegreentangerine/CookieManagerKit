@@ -54,15 +54,18 @@ final class DoctrineConsentLogReader implements ConsentLogReader
     {
         $categories = json_decode((string) ($row['categories'] ?? '[]'), true);
 
+        $trigger = (string) $row['triggerName'];
+
         return [
             'createdAt' => (int) $row['createdAt'],
             'consentId' => (string) $row['consentId'],
             'version' => (int) $row['policyVersion'],
             'categories' => is_array($categories) && array_is_list($categories) ? array_values(array_filter($categories, 'is_string')) : [],
-            'trigger' => (string) $row['triggerName'],
+            'trigger' => $trigger,
             'locale' => (string) $row['locale'],
             'userAgentFamily' => (string) $row['userAgentFamily'],
-            'reason' => (string) ($row['reason'] ?? ''),
+            /* The policy version's reason is only the visitor's reason for this row when they were asked again. */
+            'reason' => $trigger === ConsentTrigger::RECONSENT ? (string) ($row['reason'] ?? '') : '',
         ];
     }
 

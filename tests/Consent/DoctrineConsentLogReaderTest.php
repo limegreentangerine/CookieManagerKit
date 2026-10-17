@@ -63,4 +63,26 @@ final class DoctrineConsentLogReaderTest extends TestCase
             'reason' => '',
         ], $result['rows'][0]);
     }
+
+    public function testTheReasonIsOnlyShownOnReconsentRows(): void
+    {
+        $row = static fn(string $trigger): array => [
+            'createdAt' => '1760616000',
+            'consentId' => '3f2504e0-4f89-11d3-9a0c-0305e82c3301',
+            'policyVersion' => '2',
+            'categories' => '["necessary"]',
+            'triggerName' => $trigger,
+            'locale' => 'en_GB',
+            'userAgentFamily' => 'Chrome/desktop',
+            'reason' => 'New analytics vendor',
+        ];
+        $connection = $this->createMock(Connection::class);
+        $connection->method('fetchOne')->willReturn('2');
+        $connection->method('fetchAllAssociative')->willReturn([$row('custom'), $row('reconsent')]);
+
+        $rows = (new DoctrineConsentLogReader($connection))->page(ConsentLogFilter::parse(null, null, null, null, null, null, '2026-10-16'), 50, 0)['rows'];
+
+        $this->assertSame('', $rows[0]['reason']);
+        $this->assertSame('New analytics vendor', $rows[1]['reason']);
+    }
 }
