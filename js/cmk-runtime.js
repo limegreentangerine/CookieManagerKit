@@ -557,11 +557,40 @@
 		commit(granted);
 	}
 
+	function genuineEmbedAccept(button) {
+		var handle = button.getAttribute('data-cmk-embed-accept');
+		var placeholder = button.closest('[data-cmk-embed-placeholder]');
+		var wrapper = placeholder ? placeholder.parentElement : null;
+
+		if (!wrapper || !wrapper.classList.contains('cmk-embed')) {
+			return false;
+		}
+
+		for (var i = 0; i < wrapper.children.length; i++) {
+			var child = wrapper.children[i];
+
+			if (
+				child.tagName === 'IFRAME' &&
+				child.hasAttribute('data-cmk-src') &&
+				child.getAttribute('data-cmk-embed') === handle &&
+				!child.hasAttribute('data-cmk-done')
+			) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	function onClick(event) {
 		var target = event.target && event.target.closest ? event.target : null;
 		var accept = target ? target.closest('[data-cmk-embed-accept]') : null;
 
 		if (accept) {
+			if (!genuineEmbedAccept(accept)) {
+				return;
+			}
+
 			event.preventDefault();
 			acceptEmbed(accept.getAttribute('data-cmk-embed-accept'));
 

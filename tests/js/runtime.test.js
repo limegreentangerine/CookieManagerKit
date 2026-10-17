@@ -1090,6 +1090,31 @@ describe('embed accept button', () => {
 		expect(frame().hasAttribute('src')).toBe(false);
 	});
 
+	it('ignores an accept button outside any placeholder', () => {
+		document.body.innerHTML = '<button data-cmk-embed-accept="marketing">x</button>';
+		mount();
+
+		accept().click();
+
+		expect(window.cmk.get()).toBeNull();
+		expect(root()).not.toBeNull();
+	});
+
+	it.each([
+		['no iframe in the wrapper', '<span class="cmk-embed"><span data-cmk-embed-placeholder><button data-cmk-embed-accept="marketing">x</button></span></span>'],
+		['an iframe of another category', '<span class="cmk-embed"><span data-cmk-embed-placeholder><button data-cmk-embed-accept="marketing">x</button></span><iframe data-cmk-embed="analytics" data-cmk-src="' + URL + '"></iframe></span>'],
+		['an iframe already loaded', '<span class="cmk-embed"><span data-cmk-embed-placeholder><button data-cmk-embed-accept="marketing">x</button></span><iframe data-cmk-embed="marketing" data-cmk-src="' + URL + '" data-cmk-done></iframe></span>'],
+		['a wrapper without the cmk-embed class', '<span><span data-cmk-embed-placeholder><button data-cmk-embed-accept="marketing">x</button></span><iframe data-cmk-embed="marketing" data-cmk-src="' + URL + '"></iframe></span>']
+	])('ignores an accept button with %s', (name, html) => {
+		document.body.innerHTML = html;
+		mount();
+
+		accept().click();
+
+		expect(window.cmk.get()).toBeNull();
+		expect(root()).not.toBeNull();
+	});
+
 	it('keeps the preferences button opening the dialog', () => {
 		consent(['necessary']);
 		document.body.innerHTML = EMBED;
