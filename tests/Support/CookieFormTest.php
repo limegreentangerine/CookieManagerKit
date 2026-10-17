@@ -10,6 +10,29 @@ use CookieManagerKit\Support\CookieForm;
 
 final class CookieFormTest extends TestCase
 {
+    private function persist(Service|\CookieManagerKit\Entity\Cookie $entity, int $id): void
+    {
+        (new \ReflectionProperty(\ClassKit\Entity\Core\BaseEntity::class, 'id'))->setValue($entity, $id);
+    }
+
+    private function row(?int $id, string $name): array
+    {
+        return ['id' => $id, 'name' => $name, 'days' => 0, 'purposes' => ['en_GB' => '']];
+    }
+
+    private function twoCookies(): Service
+    {
+        $service = new Service();
+        $this->persist($service->addCookie('A'), 1);
+        $this->persist($service->addCookie('B'), 2);
+
+        return $service;
+    }
+
+    private function assertUnchanged(Service $service): void
+    {
+        $this->assertSame(['A', 'B'], array_map(static fn($c) => $c->getName(), $service->getCookies()->toArray()));
+    }
     public function testBlankNamesAndDuplicatesAreDropped(): void
     {
         $rows = CookieForm::parse([
@@ -32,6 +55,8 @@ final class CookieFormTest extends TestCase
         $this->assertNull($rows[0]['id']);
         $this->assertSame('x', $rows[0]['name']);
         $this->assertSame(0, $rows[0]['days']);
+        $long = CookieForm::parse([['name' => str_repeat('a', 200)]], ['en_GB']);
+        $this->assertSame(128, strlen($long[0]['name']));
         $this->assertSame(['en_GB' => 'aok'], $rows[0]['purposes']);
     }
 
@@ -67,5 +92,71 @@ final class CookieFormTest extends TestCase
         $this->assertNotNull($new);
         $this->assertNull($new->getContent('en_GB'));
         $this->assertCount(2, $service->getCookies());
+    }
+
+    public function testRenameById(): void
+    {
+        $service = $this->twoCookies();
+
+        CookieForm::apply($service, [$this->row(1, 'C'), $this->row(2, 'B')]);
+
+        $this->assertSame(['C', 'B'], array_map(static fn($c) => $c->getName(), $service->getCookies()->toArray()));
+    }
+
+    public function testIdFromAnotherServiceIsIgnored(): void
+    {
+        $service = $this->twoCookies();
+
+        CookieForm::apply($service, [$this->row(99, 'New'), $this->row(1, 'A'), $this->row(2, 'B')]);
+
+        $this->assertCount(3, $service->getCookies());
+        $this->assertNotNull($service->getCookie('New'));
+    }
+
+    public function testSwapIsRejectedAndNothingChanges(): void
+    {
+        $service = $this->twoCookies();
+
+        try {
+            CookieForm::apply($service, [$this->row(1, 'B'), $this->row(2, 'A')]);
+            $this->fail('Expected an exception');
+        } catch (\InvalidArgumentException) {
+            $this->assertUnchanged($service);
+        }
+    }
+
+    public function testRenameAwayPlusNewRowWithOldNameIsRejected(): void
+    {
+        $service = $this->twoCookies();
+
+        try {
+            CookieForm::apply($service, [$this->row(1, 'Y'), $this->row(null, 'A'), $this->row(2, 'B')]);
+            $this->fail('Expected an exception');
+        } catch (\InvalidArgumentException) {
+            $this->assertUnchanged($service);
+        }
+    }
+
+    public function testTwoRowsForTheSameCookieAreRejected(): void
+    {
+        $service = $this->twoCookies();
+
+        try {
+            CookieForm::apply($service, [$this->row(null, 'A'), $this->row(1, 'A')]);
+            $this->fail('Expected an exception');
+        } catch (\InvalidArgumentException) {
+            $this->assertUnchanged($service);
+        }
+    }
+
+    public function testRemoveAndReAddReusesTheCookie(): void
+    {
+        $service = $this->twoCookies();
+        $original = $service->getCookie('A');
+
+        CookieForm::apply($service, [$this->row(null, 'A')]);
+
+        $this->assertCount(1, $service->getCookies());
+        $this->assertSame($original, $service->getCookie('A'));
     }
 }

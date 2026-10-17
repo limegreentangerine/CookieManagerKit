@@ -1,5 +1,6 @@
 <?php defined('C5_EXECUTE') or die('Access Denied.');
 
+use CookieManagerKit\Support\CookieForm;
 use CookieManagerKit\Support\Output as O;
 
 /** @var string $mode */
@@ -113,9 +114,10 @@ use CookieManagerKit\Support\Output as O;
         </div>
 
         <h3 class="h5"><?php echo t('Cookies') ?></h3>
-        <p class="text-muted"><?php echo t('The cookies this service sets, shown in the cookie declaration. Leave the name empty to remove a row.') ?></p>
+        <p class="text-muted"><?php echo t('The cookies this service sets, shown in the cookie declaration. Leave the name empty to remove a row.') ?> <?php echo t('0 days means the cookie lasts for the browser session') ?></p>
         <?php $cookieRows = $isNew ? [] : $service->getCookies()->toArray();
-        $blankRows = count($cookieRows) + 3; ?>
+        $blankRows = min(CookieForm::MAX_ROWS, count($cookieRows) + 3); ?>
+        <div class="table-responsive">
         <table class="table table-sm mb-4">
             <thead>
                 <tr>
@@ -132,22 +134,22 @@ use CookieManagerKit\Support\Output as O;
                     <tr>
                         <td>
                             <input type="hidden" name="<?php echo O::e('cookies[' . $i . '][id]') ?>" value="<?php echo O::e($cookie ? $cookie->getID() : '') ?>">
-                            <input type="text" class="form-control" maxlength="128" name="<?php echo O::e('cookies[' . $i . '][name]') ?>" value="<?php echo O::e($cookie ? $cookie->getName() : '') ?>">
+                            <input type="text" class="form-control" maxlength="128" aria-label="<?php echo O::e(t('Cookie name')) ?>" name="<?php echo O::e('cookies[' . $i . '][name]') ?>" value="<?php echo O::e($cookie ? $cookie->getName() : '') ?>">
                         </td>
                         <td>
-                            <input type="number" class="form-control" min="0" max="3650" name="<?php echo O::e('cookies[' . $i . '][days]') ?>" value="<?php echo O::e($cookie ? $cookie->getDurationDays() : 0) ?>">
-                            <div class="help-block form-text"><?php echo t('0 means the cookie lasts for the browser session') ?></div>
+                            <input type="number" class="form-control" min="0" max="3650" aria-label="<?php echo O::e(t('Days')) ?>" name="<?php echo O::e('cookies[' . $i . '][days]') ?>" value="<?php echo O::e($cookie ? $cookie->getDurationDays() : 0) ?>">
                         </td>
                         <?php foreach ($locales as $locale => $label) {
                             $content = $cookie ? $cookie->getContent((string) $locale) : null; ?>
                             <td>
-                                <input type="text" class="form-control" maxlength="500" name="<?php echo O::e('cookies[' . $i . '][purpose][' . $locale . ']') ?>" value="<?php echo O::e($content ? $content->getPurpose() : '') ?>">
+                                <input type="text" class="form-control" maxlength="500" aria-label="<?php echo O::e(t('Purpose') . ' (' . $label . ')') ?>" name="<?php echo O::e('cookies[' . $i . '][purpose][' . $locale . ']') ?>" value="<?php echo O::e($content ? $content->getPurpose() : '') ?>">
                             </td>
                         <?php } ?>
                     </tr>
                 <?php } ?>
             </tbody>
         </table>
+        </div>
 
         <div class="ccm-dashboard-form-actions-wrapper">
             <div class="ccm-dashboard-form-actions">

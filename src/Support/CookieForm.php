@@ -2,6 +2,7 @@
 
 namespace CookieManagerKit\Support;
 
+use ClassKit\Entity\Core\BaseEntity;
 use CookieManagerKit\Entity\{Cookie, Service};
 
 /**
@@ -11,6 +12,13 @@ use CookieManagerKit\Entity\{Cookie, Service};
 final class CookieForm
 {
     public const MAX_ROWS = 50;
+
+    private static function persistedId(Cookie $cookie): ?int
+    {
+        $property = new \ReflectionProperty(BaseEntity::class, 'id');
+
+        return $property->isInitialized($cookie) ? $cookie->getID() : null;
+    }
 
     /**
      * @param list<string> $locales
@@ -60,25 +68,56 @@ final class CookieForm
 
     /**
      * @param list<array{id: ?int, name: string, days: int, purposes: array<string, string>}> $rows
+     *
+     * @throws \InvalidArgumentException when the rows would swap, reuse or double up cookie names
      */
     public static function apply(Service $service, array $rows): void
     {
         $byId = [];
+        $byName = [];
+        $originals = [];
 
         foreach ($service->getCookies() as $cookie) {
-            try {
-                $byId[$cookie->getID()] = $cookie;
-            } catch (\Error) {
-                // Not persisted yet, so it has no ID a posted row could refer to.
+            $id = self::persistedId($cookie);
+
+            if ($id !== null) {
+                $byId[$id] = $cookie;
             }
+
+            $originals[spl_object_id($cookie)] = mb_strtolower($cookie->getName());
+            $byName[mb_strtolower($cookie->getName())] = $cookie;
+        }
+
+        // Validate first: nothing on the service changes unless every row is safe to flush.
+        $plan = [];
+        $claimed = [];
+
+        foreach ($rows as $row) {
+            $cookie = $row['id'] !== null ? ($byId[$row['id']] ?? null) : null;
+            $cookie ??= $byName[mb_strtolower($row['name'])] ?? null;
+
+            if ($cookie !== null) {
+                $oid = spl_object_id($cookie);
+
+                if (isset($claimed[$oid])) {
+                    throw new \InvalidArgumentException('Two rows resolve to the same cookie.');
+                }
+
+                $claimed[$oid] = true;
+
+                foreach ($originals as $other => $original) {
+                    if ($other !== $oid && $original === mb_strtolower($row['name'])) {
+                        throw new \InvalidArgumentException('Cookies cannot swap or reuse names in one save.');
+                    }
+                }
+            }
+
+            $plan[] = [$cookie, $row];
         }
 
         $kept = [];
 
-        foreach ($rows as $row) {
-            $cookie = $row['id'] !== null ? ($byId[$row['id']] ?? null) : null;
-            $cookie ??= $service->getCookie($row['name']);
-
+        foreach ($plan as [$cookie, $row]) {
             if ($cookie === null) {
                 $cookie = $service->addCookie($row['name']);
             } else {

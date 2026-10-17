@@ -129,7 +129,13 @@ class Services extends DashboardPageController
             $service->setContent($locale, $description);
         }
 
-        CookieForm::apply($service, CookieForm::parse($this->post('cookies'), array_keys(SiteLocales::options())));
+        try {
+            CookieForm::apply($service, CookieForm::parse($this->post('cookies'), array_keys(SiteLocales::options())));
+        } catch (\InvalidArgumentException) {
+            $this->flash('error', t('Two cookies cannot swap or reuse names in one save. Save one change at a time.'));
+
+            return $this->buildRedirect($back)->send();
+        }
 
         $this->entityManager->persist($service);
         $this->entityManager->flush();
