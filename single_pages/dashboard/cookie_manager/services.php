@@ -157,5 +157,6 @@ use CookieManagerKit\Support\Output as O;
                 <?php echo $form->submit('save', t('Save Service'), ['class' => 'btn btn-primary float-end']) ?>
             </div>
         </div>
+        <input type="hidden" name="<?php echo O::e(CookieForm::SENTINEL) ?>" value="1">
     </form>
 <?php } ?>

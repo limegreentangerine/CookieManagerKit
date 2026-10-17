@@ -79,6 +79,36 @@ final class CookieFormTest extends TestCase
         $this->assertFalse(CookieForm::exceeds(null));
     }
 
+    public function testAMissingSentinelMeansTheListWasTruncated(): void
+    {
+        $this->assertSame(CookieForm::UNSAFE_TRUNCATED, CookieForm::unsafeReason(null, [['name' => 'a']]));
+        $this->assertSame(CookieForm::UNSAFE_TRUNCATED, CookieForm::unsafeReason('0', []));
+    }
+
+    public function testASentinelWithAnInRangeListIsSafe(): void
+    {
+        $this->assertNull(CookieForm::unsafeReason('1', [['name' => 'a']]));
+    }
+
+    public function testMoreThanTheCapIsUnsafeEvenWithTheSentinel(): void
+    {
+        $posted = array_fill(0, CookieForm::MAX_ROWS + 1, ['name' => 'x']);
+
+        $this->assertSame(CookieForm::UNSAFE_TOO_MANY, CookieForm::unsafeReason('1', $posted));
+    }
+
+    public function testTheServiceViewPutsTheSentinelAfterTheCookieRowsAtTheEndOfTheForm(): void
+    {
+        $view = (string) file_get_contents(dirname(__DIR__, 2) . '/single_pages/dashboard/cookie_manager/services.php');
+        $sentinel = strpos($view, 'CookieForm::SENTINEL');
+
+        $this->assertNotFalse($sentinel);
+        $this->assertGreaterThan((int) strrpos($view, "'][name]'"), $sentinel);
+        $this->assertGreaterThan((int) strpos($view, "\$form->submit('save'"), $sentinel);
+        $this->assertGreaterThan($sentinel, (int) strrpos($view, '</form>'));
+        $this->assertSame('', trim(substr($view, $sentinel + 80, (int) strrpos($view, '</form>') - $sentinel - 80)));
+    }
+
     public function testTheFormRendersEveryStoredCookieAndAFewBlankRows(): void
     {
         $this->assertSame(3, CookieForm::formRows(0));

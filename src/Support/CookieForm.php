@@ -14,6 +14,12 @@ final class CookieForm
     private const BLANK_ROWS = 3;
     public const MAX_ROWS = 500;
 
+    /** Last field of the service form: PHP drops fields past max_input_vars from the end, so it vanishes first. */
+    public const SENTINEL = 'cookiesEnd';
+
+    public const UNSAFE_TRUNCATED = 'truncated';
+    public const UNSAFE_TOO_MANY = 'too_many';
+
     private static function persistedId(Cookie $cookie): ?int
     {
         $property = new \ReflectionProperty(BaseEntity::class, 'id');
@@ -25,6 +31,19 @@ final class CookieForm
     public static function formRows(int $stored): int
     {
         return $stored + max(0, min(self::BLANK_ROWS, self::MAX_ROWS - $stored));
+    }
+
+    /**
+     * Whether the posted cookie rows can be trusted to be the whole list. Null when they can, otherwise why not; in
+     * either case the stored cookie list must be left exactly as it is.
+     */
+    public static function unsafeReason(mixed $sentinel, mixed $posted): ?string
+    {
+        if ($sentinel !== '1') {
+            return self::UNSAFE_TRUNCATED;
+        }
+
+        return self::exceeds($posted) ? self::UNSAFE_TOO_MANY : null;
     }
 
     /** True when more rows were posted than the form can ever render, so parse() would silently drop the rest. */
