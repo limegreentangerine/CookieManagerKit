@@ -66,6 +66,18 @@ foreach ($locales as $locale => $label) {
                     <?php } ?>
                 </div>
 
+                <div class="form-group mb-3">
+                    <label class="form-label" for="<?php echo O::e($tabId) ?>-embedMessage"><?php echo t('Blocked embed message') ?></label>
+                    <textarea class="form-control" rows="2" maxlength="500" id="<?php echo O::e($tabId) ?>-embedMessage" name="<?php echo O::e($name . '[embedMessage]') ?>" placeholder="<?php echo O::e($defaults['embedMessage']) ?>"><?php echo O::e($row ? $row->getEmbedMessage() : '') ?></textarea>
+                    <div class="form-text"><?php echo t('Shown in place of an embedded video or map until the visitor accepts. {service} is replaced with the service name.') ?></div>
+                </div>
+
+                <div class="form-group mb-3">
+                    <label class="form-label" for="<?php echo O::e($tabId) ?>-embedAcceptLabel"><?php echo t('Blocked embed button') ?></label>
+                    <input type="text" class="form-control" maxlength="64" id="<?php echo O::e($tabId) ?>-embedAcceptLabel" name="<?php echo O::e($name . '[embedAcceptLabel]') ?>" value="<?php echo O::e($row ? $row->getEmbedAcceptLabel() : '') ?>" placeholder="<?php echo O::e($defaults['embedAcceptLabel']) ?>">
+                    <div class="form-text"><?php echo t('{category} is replaced with the category name. The "Customise" label is used for the second button.') ?></div>
+                </div>
+
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label" for="<?php echo O::e($tabId) ?>-policyLinkText"><?php echo t('Cookie policy link text') ?></label>

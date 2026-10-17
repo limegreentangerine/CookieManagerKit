@@ -27,8 +27,19 @@ live site.
 - A cookie and script scanner with a review queue (Scanner pages, see below).
 - A consent log, re-consent with a recorded reason, Google Consent Mode v2 and an opt-in or opt-out default model (see below).
 
-Not built yet (later phases): regional rules, declaration block, embed placeholders, translation assist, A/B testing, and report export
-and sharing.
+Not built yet (later phases): regional rules, A/B testing, and report export and sharing.
+
+## Cookie declaration
+
+Each Service can list the cookies it sets (name, purpose, duration). Add the **Cookie Declaration** block (`cookie_declaration`) to your cookie or privacy policy page and it prints those cookies, grouped by category, in the visitor's language. Approving a cookie finding in the scanner pre-fills the cookie row for you.
+
+## Embed placeholders
+
+Iframes of a Service that is blocked until consent are replaced automatically by a placeholder with a message and an accept button. A frame is matched when its host is, or is a subdomain of, one of the Service's Domains, so list the Domains on each Service. The button grants only that Service's category, is logged in the Consent Log like any other choice, and the iframe is never loaded before consent. If a page cannot be analysed safely (more than 1000 iframes, over 4 MB, or unparseable markup) every iframe is blanked. Iframes inside `srcdoc` attributes, `<base href>`, and `<object>`, `<embed>` and `<frame>` are not handled. Iframes inserted by inline JavaScript (inside `<script>` text) are blocked and never load, even after consent, because the loader does not watch for later DOM changes: restructure such code or load the frame through the consent API. Iframes using lazy-load attributes such as `data-src` are not detected. When updating, review each Service's Domains: Domains that earlier scanner approvals added now block iframes from those hosts immediately (for example a `www.google.com` domain on an analytics Service would block Google Maps embeds until the visitor accepts that category). The message and button text are set on the Banner page.
+
+## Translations
+
+`Dashboard > Cookie Manager > Translations` shows how complete each language is, lets you copy the default language into another as a starting point, and exports and imports all translatable text as CSV. Save a spreadsheet as "CSV UTF-8 (comma delimited)". An import replaces existing translations with the non-blank values in the file, and is all-or-nothing: if any row is invalid nothing is changed.
 
 ## Statistics
 

@@ -61,4 +61,14 @@ final class TasksTest extends TestCase
 
         $this->assertMatchesRegularExpression("/function installOrUpgrade\\(.*?\\{\\s*\\\$this->installContentFile\\('tasks\\.xml'\\);/s", $controller);
     }
+
+    public function testCachesAreFlushedAfterTheSeedOnEveryInstallOrUpgrade(): void
+    {
+        $controller = (string) file_get_contents(self::ROOT . '/controller.php');
+
+        $this->assertMatchesRegularExpression(
+            '/syncBundled\(\);.*?try\s*\{\s*app\(\)->executeCommand\(new ClearCacheCommand\(\)\);\s*\}\s*catch \(\\\\Throwable \$e\)\s*\{\s*ErrorLog::record\(\$e\);\s*\}\s*Catalog::flush\(\);/s',
+            $controller,
+        );
+    }
 }

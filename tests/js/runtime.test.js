@@ -1037,3 +1037,94 @@ describe('the default model and GPC in the banner', () => {
 		expect(window.cmk.get()).toBeNull();
 	});
 });
+
+describe('embed accept button', () => {
+	const URL = 'https://www.youtube.com/embed/x';
+	const EMBED =
+		'<span class="cmk-embed"><span class="cmk-embed__box" data-cmk-embed-placeholder><button type="button" class="cmk-embed__accept" data-cmk-embed-accept="marketing">Accept Marketing</button> <button type="button" class="cmk-embed__prefs" data-cmk-open>Preferences</button></span><iframe data-cmk-embed=marketing data-cmk-src="' + URL + '"></iframe></span>';
+	const frame = () => document.querySelector('iframe');
+	const accept = () => document.querySelector('[data-cmk-embed-accept]');
+
+	it('grants only that category, loads the iframe and closes the banner', () => {
+		document.body.innerHTML = EMBED;
+		mount();
+		expect(root()).not.toBeNull();
+
+		accept().click();
+
+		expect(saved()).toEqual(['necessary', 'marketing']);
+		expect(frame().getAttribute('src')).toBe(URL);
+		expect(document.querySelector('[data-cmk-embed-placeholder]')).toBeNull();
+		expect(document.querySelector('.cmk-embed')).toBeNull();
+		expect(frame().parentNode).toBe(document.body);
+		expect(root()).toBeNull();
+	});
+
+	it('keeps what was already granted', () => {
+		consent(['necessary', 'analytics']);
+		document.body.innerHTML = EMBED;
+		mount();
+
+		accept().click();
+
+		expect(saved().sort()).toEqual(['analytics', 'marketing', 'necessary']);
+	});
+
+	it('records the choice on the consent endpoint', () => {
+		document.body.innerHTML = EMBED;
+		mount();
+
+		accept().click();
+
+		expect(window.fetch).toHaveBeenCalledTimes(1);
+		const [url, options] = window.fetch.mock.calls[0];
+		expect(url).toBe('/cookie-manager/consent');
+		expect(JSON.parse(options.body).c).toEqual(['necessary', 'marketing']);
+	});
+
+	it('ignores a category the config does not know', () => {
+		document.body.innerHTML = EMBED.replaceAll('marketing', 'nonsense');
+		mount();
+
+		accept().click();
+
+		expect(window.cmk.get()).toBeNull();
+		expect(frame().hasAttribute('src')).toBe(false);
+	});
+
+	it('ignores an accept button outside any placeholder', () => {
+		document.body.innerHTML = '<button data-cmk-embed-accept="marketing">x</button>';
+		mount();
+
+		accept().click();
+
+		expect(window.cmk.get()).toBeNull();
+		expect(root()).not.toBeNull();
+	});
+
+	it.each([
+		['no iframe in the wrapper', '<span class="cmk-embed"><span data-cmk-embed-placeholder><button data-cmk-embed-accept="marketing">x</button></span></span>'],
+		['an iframe of another category', '<span class="cmk-embed"><span data-cmk-embed-placeholder><button data-cmk-embed-accept="marketing">x</button></span><iframe data-cmk-embed="analytics" data-cmk-src="' + URL + '"></iframe></span>'],
+		['an iframe already loaded', '<span class="cmk-embed"><span data-cmk-embed-placeholder><button data-cmk-embed-accept="marketing">x</button></span><iframe data-cmk-embed="marketing" data-cmk-src="' + URL + '" data-cmk-done></iframe></span>'],
+		['a wrapper without the cmk-embed class', '<span><span data-cmk-embed-placeholder><button data-cmk-embed-accept="marketing">x</button></span><iframe data-cmk-embed="marketing" data-cmk-src="' + URL + '"></iframe></span>']
+	])('ignores an accept button with %s', (name, html) => {
+		document.body.innerHTML = html;
+		mount();
+
+		accept().click();
+
+		expect(window.cmk.get()).toBeNull();
+		expect(root()).not.toBeNull();
+	});
+
+	it('keeps the preferences button opening the dialog', () => {
+		consent(['necessary']);
+		document.body.innerHTML = EMBED;
+		mount();
+		expect(root()).toBeNull();
+
+		document.querySelector('[data-cmk-open]').click();
+
+		expect(root()).not.toBeNull();
+	});
+});

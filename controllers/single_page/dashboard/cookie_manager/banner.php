@@ -96,6 +96,8 @@ class Banner extends DashboardPageController
                 'save' => Text::plain($input['save'] ?? '', 64),
                 'widget' => Text::plain($input['widget'] ?? '', 64),
                 'policyLinkText' => Text::plain($input['policyLinkText'] ?? ''),
+                'embedMessage' => Text::multiline($input['embedMessage'] ?? '', 500),
+                'embedAcceptLabel' => Text::plain($input['embedAcceptLabel'] ?? '', 64),
                 'policyPage' => $this->existingPageId($this->post('policyPage_' . $locale)),
             ];
         }
@@ -128,6 +130,8 @@ class Banner extends DashboardPageController
                 ->setSaveLabel($value['save'])
                 ->setWidgetLabel($value['widget'])
                 ->setPolicyLinkText($value['policyLinkText'])
+                ->setEmbedMessage($value['embedMessage'])
+                ->setEmbedAcceptLabel($value['embedAcceptLabel'])
                 ->setPolicyPageId($value['policyPage']);
 
             $this->entityManager->persist($row);

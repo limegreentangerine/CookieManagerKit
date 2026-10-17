@@ -4,7 +4,7 @@ namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\Cook
 
 use CookieManagerKit\Entity\{Category, Service};
 use Concrete\Core\Page\Controller\DashboardPageController;
-use CookieManagerKit\Support\{Catalog, SiteLocales, Text};
+use CookieManagerKit\Support\{Catalog, CookieForm, SiteLocales, Text};
 
 class Services extends DashboardPageController
 {
@@ -129,9 +129,34 @@ class Services extends DashboardPageController
             $service->setContent($locale, $description);
         }
 
+        // A truncated or oversized POST cannot be trusted to be the whole list: leave the stored list alone.
+        $unsafe = CookieForm::unsafeReason($this->post(CookieForm::SENTINEL), $this->post('cookies'));
+        $cookieListSkipped = $unsafe !== null;
+
+        try {
+            if (!$cookieListSkipped) {
+                CookieForm::apply($service, CookieForm::parse($this->post('cookies'), array_keys(SiteLocales::options())));
+            }
+        } catch (\OverflowException) {
+            // Saving the list would delete the cookies the form cannot show, so the list is left exactly as stored.
+            $cookieListSkipped = true;
+        } catch (\InvalidArgumentException) {
+            $this->flash('error', t('Two cookies cannot swap or reuse names in one save. Save one change at a time.'));
+
+            return $this->buildRedirect($back)->send();
+        }
+
         $this->entityManager->persist($service);
         $this->entityManager->flush();
         Catalog::flush();
+
+        if ($cookieListSkipped) {
+            $this->flash('error', $unsafe === CookieForm::UNSAFE_TRUNCATED
+                ? t('The cookie list was too long for this server to save (increase PHP max_input_vars) and was left unchanged. The rest of the service was saved.')
+                : t('The service was saved, but its cookie list was not changed because it holds more cookies than this form can edit.'));
+
+            return $this->buildRedirect($back)->send();
+        }
 
         $this->flash('success', t('Service saved.'));
 

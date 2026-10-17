@@ -31,7 +31,7 @@ final class ViewEscapingTest extends TestCase
         $files = [];
         $root = dirname(__DIR__);
 
-        foreach (['single_pages', 'elements'] as $folder) {
+        foreach (['single_pages', 'elements', 'blocks'] as $folder) {
             if (!is_dir($root . '/' . $folder)) {
                 continue;
             }

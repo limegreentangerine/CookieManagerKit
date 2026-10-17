@@ -8,7 +8,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use CookieManagerKit\Events\ConsentManager;
 use CookieManagerKit\Scan\ClassificationStore;
 use Concrete\Core\Support\Facade\{Events, Route};
-use CookieManagerKit\Support\{Catalog, Installer};
+use Concrete\Core\Cache\Command\ClearCacheCommand;
+use CookieManagerKit\Support\{Catalog, ErrorLog, Installer};
 use ClassKit\Package\Traits\{AttributeTrait, BlockTrait, PageTrait};
 use CookieManagerKit\Consent\{ConsentRecorder, DoctrineConsentLogStore, PersistingConsentRecorder};
 
@@ -31,7 +32,7 @@ class Controller extends PackageController
      *
      * @var string
      */
-    protected $pkgVersion = '0.4.0';
+    protected $pkgVersion = '0.5.0';
 
     /**
      * The minimum Concrete version compatible with the package.
@@ -110,6 +111,8 @@ class Controller extends PackageController
         'cmkScanRuns',
         'cmkClassificationEntries',
         'cmkStats',
+        'cmkCookieContents',
+        'cmkCookies',
         'cmkServiceContents',
         'cmkCategoryContents',
         'cmkServices',
@@ -155,12 +158,27 @@ class Controller extends PackageController
         $this->addSinglePage('/dashboard/cookie_manager/findings', $pkg, t('Findings'), t('Review what the scanner found'));
         $this->addSinglePage('/dashboard/cookie_manager/scan_settings', $pkg, t('Scanner Settings'), t('Crawl limits, alerts and classification data'));
         $this->addSinglePage('/dashboard/cookie_manager/consent_log', $pkg, t('Consent Log'), t('Who consented to what, and when'));
+        $this->addSinglePage('/dashboard/cookie_manager/translations', $pkg, t('Translations'), t('See what is translated in each language'));
+
+        $this->autoInstallBlocks($pkg);
 
         $em = app(EntityManagerInterface::class);
 
         Installer::seed($em, Catalog::defaultLocale());
         // Deliberately not caught: a failed seed must fail the install or upgrade loudly.
         (new ClassificationStore($em))->syncBundled();
+
+        // After an upgrade the new columns and tables must be visible to every cached layer, or settings saved on the
+        // new fields are silently dropped until the cache is cleared by hand (seen on the 0.3.0 to 0.4.0 Update).
+        // Same command Dashboard > System & Settings > Optimization > Clear Cache runs.
+        // Best effort: a cache that cannot be cleared must not fail the upgrade, the seed above already succeeded.
+        try {
+            app()->executeCommand(new ClearCacheCommand());
+        } catch (\Throwable $e) {
+            ErrorLog::record($e);
+        }
+
+        Catalog::flush();
     }
 
     public function registerRoutes(): void

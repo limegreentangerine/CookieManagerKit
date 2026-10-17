@@ -2,10 +2,11 @@
 
 namespace CookieManagerKit\Scan;
 
-use CookieManagerKit\Support\Text;
+use CookieManagerKit\Entity\Cookie;
 use CookieManagerKit\Entity\Service;
 use CookieManagerKit\Entity\Category;
 use CookieManagerKit\Entity\ScanFinding;
+use CookieManagerKit\Support\{CookieForm, Text};
 
 /**
  * What an admin can do with a finding. Approving is the only path from a finding to a Service, which is what
@@ -33,7 +34,7 @@ final class Review
 
     /**
      * Attaches the finding to $service, or to a new service named $name in $category, and records the host on the
-     * service so the banner and the later declaration can say where it loads from.
+     * service (and, for a cookie, the cookie name on its cookie list) so the banner and the later declaration can say where it loads from.
      *
      * @throws \DomainException          when the finding is not awaiting review (already approved, ignored or gone); nothing changes
      * @throws \InvalidArgumentException when a new service is wanted without a name or a category
@@ -64,6 +65,13 @@ final class Review
             if (!in_array($finding->getHost(), $domains, true)) {
                 $service->setDomainsText(implode("\n", [...$domains, $finding->getHost()]));
             }
+        }
+
+        // The declaration block lists cookies per service; a cookie the scanner found starts as a row the admin completes.
+        if ($finding->getKind() === ScanFinding::COOKIE && mb_strlen($finding->getName()) <= Cookie::MAX_NAME
+            && ($service->getCookie($finding->getName()) !== null || count($service->getCookies()) < CookieForm::MAX_ROWS)
+        ) {
+            $service->addCookie($finding->getName());
         }
 
         $finding->setService($service)->setStatus(ScanFinding::APPROVED);
