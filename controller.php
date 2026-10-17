@@ -9,7 +9,7 @@ use CookieManagerKit\Events\ConsentManager;
 use CookieManagerKit\Scan\ClassificationStore;
 use Concrete\Core\Support\Facade\{Events, Route};
 use Concrete\Core\Cache\Command\ClearCacheCommand;
-use CookieManagerKit\Support\{Catalog, Installer};
+use CookieManagerKit\Support\{Catalog, ErrorLog, Installer};
 use ClassKit\Package\Traits\{AttributeTrait, BlockTrait, PageTrait};
 use CookieManagerKit\Consent\{ConsentRecorder, DoctrineConsentLogStore, PersistingConsentRecorder};
 
@@ -170,8 +170,14 @@ class Controller extends PackageController
 
         // After an upgrade the new columns and tables must be visible to every cached layer, or settings saved on the
         // new fields are silently dropped until the cache is cleared by hand (seen on the 0.3.0 to 0.4.0 Update).
-        // Same command Dashboard > System & Settings > Optimization > Clear Cache runs. Deliberately not caught.
-        app()->executeCommand(new ClearCacheCommand());
+        // Same command Dashboard > System & Settings > Optimization > Clear Cache runs.
+        // Best effort: a cache that cannot be cleared must not fail the upgrade, the seed above already succeeded.
+        try {
+            app()->executeCommand(new ClearCacheCommand());
+        } catch (\Throwable $e) {
+            ErrorLog::record($e);
+        }
+
         Catalog::flush();
     }
 

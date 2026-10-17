@@ -21,11 +21,14 @@ Phase 4: cookie declaration, embed placeholders and translation assist.
 ### Known limits
 
 - Iframes inside `srcdoc` attributes, `<base href>`, and `<object>`, `<embed>` and `<frame>` are not handled.
+- Iframes inserted by inline JavaScript (inside `<script>` text) are blocked and never load, even after consent, because the loader does not watch for later DOM changes. Restructure such code or load the frame through the consent API.
+- Iframes that use lazy-load attributes such as `data-src` are not detected.
 
 ### Upgrade notes
 
 - Run **Update** for the package in the dashboard. This adds the new tables and fields, the Translations page, and clears the cache.
 - Blocked embeds only work for Services that list their Domains; check each Service.
+- **Review each Service's Domains after updating.** Domains that earlier scanner approvals added to a Service now block iframes from those hosts immediately. For example a `www.google.com` domain on an analytics Service would block Google Maps embeds until the visitor accepts that category.
 - Add the Cookie Declaration block to your policy page.
 
 ## 0.4.0

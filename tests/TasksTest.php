@@ -67,7 +67,7 @@ final class TasksTest extends TestCase
         $controller = (string) file_get_contents(self::ROOT . '/controller.php');
 
         $this->assertMatchesRegularExpression(
-            '/syncBundled\(\);.*?executeCommand\(new ClearCacheCommand\(\)\);\s*Catalog::flush\(\);/s',
+            '/syncBundled\(\);.*?try\s*\{\s*app\(\)->executeCommand\(new ClearCacheCommand\(\)\);\s*\}\s*catch \(\\\\Throwable \$e\)\s*\{\s*ErrorLog::record\(\$e\);\s*\}\s*Catalog::flush\(\);/s',
             $controller,
         );
     }

@@ -267,6 +267,7 @@ iframe[data-cmk-embed]:not([src]) {
 	align-items: flex-start;
 	justify-content: center;
 	box-sizing: border-box;
+	height: 100%;
 	min-height: 160px;
 	padding: 20px;
 	color: #111111;

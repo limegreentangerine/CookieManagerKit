@@ -65,8 +65,14 @@ class Translations extends DashboardPageController
         $locale = $this->targetLocale();
         $area = $this->post('area');
 
-        if ($locale === null || !is_string($area) || ($area !== 'all' && !in_array($area, TranslationReport::AREAS, true))) {
+        if ($locale === null) {
             $this->flash('error', t('Choose a language other than the default.'));
+
+            return $this->buildRedirect(self::URL)->send();
+        }
+
+        if (!is_string($area) || ($area !== 'all' && !in_array($area, TranslationReport::AREAS, true))) {
+            $this->flash('error', t('Choose a valid area.'));
 
             return $this->buildRedirect(self::URL)->send();
         }
@@ -75,12 +81,19 @@ class Translations extends DashboardPageController
         $slots = $this->slots();
         $count = 0;
 
-        foreach ($area === 'all' ? TranslationReport::AREAS : [$area] as $one) {
-            $count += TranslationReport::copyFromDefault($slots, $one, $locale, $default);
-        }
+        try {
+            foreach ($area === 'all' ? TranslationReport::AREAS : [$area] as $one) {
+                $count += TranslationReport::copyFromDefault($slots, $one, $locale, $default);
+            }
 
-        $this->entityManager->flush();
-        Catalog::flush();
+            $this->entityManager->flush();
+            Catalog::flush();
+        } catch (\Throwable $e) {
+            ErrorLog::record($e);
+            $this->flash('error', t('The fields could not be copied because of an unexpected error.'));
+
+            return $this->buildRedirect(self::URL)->send();
+        }
 
         $this->flash('success', t('Copied %s fields from the default language.', $count));
 
@@ -109,7 +122,7 @@ class Translations extends DashboardPageController
 
         return new Response(TranslationCsv::export($this->slots(), $locale, SiteLocales::defaultLocale()), 200, [
             'Content-Type' => 'text/csv; charset=utf-8',
-            'Content-Disposition' => 'attachment; filename="translations-' . $locale . '-' . gmdate('Ymd') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="translations-' . $locale . '.csv"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'no-store',
         ]);
