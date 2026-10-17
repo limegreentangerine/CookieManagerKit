@@ -1055,6 +1055,8 @@ describe('embed accept button', () => {
 		expect(saved()).toEqual(['necessary', 'marketing']);
 		expect(frame().getAttribute('src')).toBe(URL);
 		expect(document.querySelector('[data-cmk-embed-placeholder]')).toBeNull();
+		expect(document.querySelector('.cmk-embed')).toBeNull();
+		expect(frame().parentNode).toBe(document.body);
 		expect(root()).toBeNull();
 	});
 

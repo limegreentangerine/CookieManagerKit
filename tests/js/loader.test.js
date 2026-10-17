@@ -870,8 +870,30 @@ describe('embeds', () => {
 		expect(frame().getAttribute('src')).toBe(URL);
 		expect(frame().hasAttribute('data-cmk-src')).toBe(false);
 		expect(placeholder()).toBeNull();
+	});
+
+	it('replaces the wrapper with the iframe, in the wrapper position', () => {
+		document.body.innerHTML = '<div id="host"><b>before</b>' + WRAPPED() + '<i>after</i></div>';
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+
+		const host = document.getElementById('host');
+
+		expect(document.querySelector('.cmk-embed')).toBeNull();
+		expect(frame().parentNode).toBe(host);
+		expect(frame().previousSibling.tagName).toBe('B');
+		expect(frame().nextSibling.tagName).toBe('I');
+		expect(frame().getAttribute('src')).toBe(URL);
+	});
+
+	it('keeps the wrapper when it holds anything besides the placeholder and the iframe', () => {
+		document.body.innerHTML = WRAPPED().replace('</iframe></span>', '</iframe><em>extra</em></span>');
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+
+		expect(frame().getAttribute('src')).toBe(URL);
+		expect(placeholder()).toBeNull();
 		expect(frame().parentNode.className).toBe('cmk-embed');
-		expect(frame().parentNode.children.length).toBe(1);
 	});
 
 	it('loads a bare iframe that has no wrapper or placeholder', () => {

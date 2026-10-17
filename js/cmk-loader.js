@@ -337,10 +337,45 @@
 			var wrapper = frame.parentNode;
 
 			if (wrapper && wrapper.classList && wrapper.classList.contains('cmk-embed')) {
+				var holder = null;
+				var others = 0;
+
 				for (var c = wrapper.firstChild; c; c = c.nextSibling) {
-					if (c.nodeType === 1 && c.hasAttribute('data-cmk-embed-placeholder')) {
-						wrapper.removeChild(c);
-						break;
+					if (c === frame) {
+						continue;
+					}
+
+					if (
+						!holder &&
+						c.nodeType === 1 &&
+						c.hasAttribute('data-cmk-embed-placeholder')
+					) {
+						holder = c;
+					} else {
+						others++;
+					}
+				}
+
+				if (holder) {
+					var focused = holder.contains(d.activeElement);
+
+					wrapper.removeChild(holder);
+
+					/*
+					 * Nothing else is inside: drop the wrapper too. Left in place it would be the iframe's positioned
+					 * ancestor with no in-flow content (height 0), which breaks themes that size the iframe against
+					 * its own container (aspect-ratio boxes).
+					 */
+					if (others === 0 && wrapper.parentNode) {
+						wrapper.parentNode.replaceChild(frame, wrapper);
+					}
+
+					if (focused) {
+						try {
+							frame.focus();
+						} catch (e) {
+							/* focus is a courtesy */
+						}
 					}
 				}
 			}
