@@ -37,6 +37,32 @@ final class ReviewTest extends TestCase
         $this->assertSame($service, $finding->getService());
     }
 
+    public function testApprovingACookieFindingAddsItToTheServiceCookieList(): void
+    {
+        $finding = self::finding(ScanFinding::COOKIE, '_ga', 'example.com');
+        $service = Review::approve($finding, self::category('analytics'), null, 'Analytics', 'Google');
+
+        $this->assertNotNull($service->getCookie('_ga'));
+        $this->assertSame(0, $service->getCookie('_ga')->getDurationDays());
+    }
+
+    public function testApprovingTheSameCookieTwiceDoesNotDuplicateIt(): void
+    {
+        $service = Review::approve(self::finding(ScanFinding::COOKIE, '_ga', 'example.com'), self::category('analytics'), null, 'A', 'G');
+        Review::approve(self::finding(ScanFinding::COOKIE, '_GA', 'example.com'), null, $service, '', '');
+
+        $this->assertCount(1, $service->getCookies());
+    }
+
+    public function testOtherFindingKindsAndOverlongNamesAddNoCookie(): void
+    {
+        $script = Review::approve(self::finding(ScanFinding::SCRIPT, 'x.js', 'cdn.example.com'), self::category('analytics'), null, 'A', 'G');
+        $long = Review::approve(self::finding(ScanFinding::COOKIE, str_repeat('a', 200), 'example.com'), self::category('analytics'), null, 'B', 'G');
+
+        $this->assertCount(0, $script->getCookies());
+        $this->assertCount(0, $long->getCookies());
+    }
+
     public function testApproveCreatesANewServiceInTheChosenCategory(): void
     {
         $marketing = self::category('marketing');
