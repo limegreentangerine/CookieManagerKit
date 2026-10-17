@@ -22,8 +22,11 @@ namespace CookieManagerKit\Support;
  * placeholder (message, accept button, preferences button) inserted before them and a closing `</span>` after their
  * end tag.
  *
- * Fails closed: on any error, or if the result still contains a live matched iframe, every iframe start tag has its
- * `src` renamed instead.
+ * Fails closed: on any error, or if the result still contains a live matched iframe (checked by a coarse second scan
+ * that shares no code with the matcher), every iframe start tag has its `src` renamed instead; if even that cannot be
+ * done, every `<iframe` tag is renamed `<cmk-blocked-iframe`. A page is never blanked.
+ *
+ * The caller must never run this on edit-mode or dashboard output; it is for visitor-facing page output only.
  *
  * Known limits: iframes inside `srcdoc` attribute content, relative `src` values resolved against `<base href>`, and
  * `<object>`, `<embed>` and `<frame>` are out of scope.
@@ -31,26 +34,75 @@ namespace CookieManagerKit\Support;
 final class EmbedRewriter
 {
     private const OCCURRENCE = '#<iframe(?=[\t\n\f\r />])#i';
-    private const RAW_TEXT = ['script', 'style', 'textarea', 'title', 'xmp', 'noembed', 'noframes', 'iframe'];
+    private const RAW_TEXT = ['script', 'style', 'textarea', 'title', 'xmp', 'noembed', 'noframes', 'iframe', 'noscript'];
+    private const LEGACY = ['AElig', 'AMP', 'Aacute', 'Acirc', 'Agrave', 'Aring', 'Atilde', 'Auml', 'COPY', 'Ccedil', 'ETH', 'Eacute', 'Ecirc', 'Egrave', 'Euml', 'GT', 'Iacute', 'Icirc', 'Igrave', 'Iuml', 'LT', 'Ntilde', 'Oacute', 'Ocirc', 'Ograve', 'Oslash', 'Otilde', 'Ouml', 'QUOT', 'REG', 'THORN', 'Uacute', 'Ucirc', 'Ugrave', 'Uuml', 'Yacute', 'aacute', 'acirc', 'acute', 'aelig', 'agrave', 'amp', 'aring', 'atilde', 'auml', 'brvbar', 'ccedil', 'cedil', 'cent', 'copy', 'curren', 'deg', 'divide', 'eacute', 'ecirc', 'egrave', 'eth', 'euml', 'frac12', 'frac14', 'frac34', 'gt', 'iacute', 'icirc', 'iexcl', 'igrave', 'iquest', 'iuml', 'laquo', 'lt', 'macr', 'micro', 'middot', 'nbsp', 'not', 'ntilde', 'oacute', 'ocirc', 'ograve', 'ordf', 'ordm', 'oslash', 'otilde', 'ouml', 'para', 'plusmn', 'pound', 'quot', 'raquo', 'reg', 'sect', 'shy', 'sup1', 'sup2', 'sup3', 'szlig', 'thorn', 'times', 'uacute', 'ucirc', 'ugrave', 'uml', 'uuml', 'yacute', 'yen', 'yuml'];
     private const SPACE = "\t\n\f\r ";
+
+    /**
+     * @return array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>}
+     */
+    private static function context(string $html, int $perByte, int $extra = 2_000_000): array
+    {
+        return ['budget' => $perByte * strlen($html) + $extra, 'q' => [], 'gt' => strrpos($html, '>'), 'memo' => []];
+    }
+
+    private static function delimited(string $html, int $at): bool
+    {
+        $c = $html[$at] ?? '';
+
+        return $c !== '' && strpbrk($c, "\t\n\f\r />") !== false;
+    }
+
+    private static function neutralise(string $html): string
+    {
+        $out = '';
+        $offset = 0;
+
+        while (($at = stripos($html, '<iframe', $offset)) !== false) {
+            $out .= substr($html, $offset, $at - $offset) . (self::delimited($html, $at + 7) ? '<cmk-blocked-iframe' : substr($html, $at, 7));
+            $offset = $at + 7;
+        }
+
+        return $out . substr($html, $offset);
+    }
+
+    /**
+     * Throws when a PCRE call failed, so a failure never reads as "no match".
+     */
+    private static function ok(int|false|null $result): int
+    {
+        if ($result === false || $result === null || preg_last_error() !== PREG_NO_ERROR) {
+            throw new \RuntimeException('Pattern matching failed: ' . preg_last_error_msg());
+        }
+
+        return $result;
+    }
+
+    private static function str(?string $result): string
+    {
+        if ($result === null || preg_last_error() !== PREG_NO_ERROR) {
+            throw new \RuntimeException('Pattern matching failed: ' . preg_last_error_msg());
+        }
+
+        return $result;
+    }
 
     /**
      * Layer 1: every iframe start tag that is complete and names a known service.
      *
-     * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
+     * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}>                                                                                    $services
+     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>} $ctx
      *
      * @return list<array{at: int, nameEnd: int, tagEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, url: string, values: array<string, string>}>
      */
-    private static function occurrences(string $html, array $services, int &$budget): array
+    private static function occurrences(string $html, array $services, array &$ctx): array
     {
-        if (preg_match_all(self::OCCURRENCE, $html, $matches, PREG_OFFSET_CAPTURE) === false) {
-            throw new \RuntimeException('Searching for iframes failed.');
-        }
+        self::ok(preg_match_all(self::OCCURRENCE, $html, $matches, PREG_OFFSET_CAPTURE));
 
         $found = [];
 
         foreach ($matches[0] as [, $at]) {
-            $tag = self::tag($html, $at + 1, $budget);
+            $tag = self::tag($html, $at + 1, $ctx);
 
             if ($tag === null) {
                 continue;
@@ -72,7 +124,7 @@ final class EmbedRewriter
                 continue;
             }
 
-            $service = $parsed['host'] !== null ? self::match($parsed['url'], $services) : self::named($parsed['authority'], $services);
+            $service = $parsed['host'] !== null ? self::matchHost($parsed['host'], $services) : self::named($parsed['authority'], $services);
 
             if ($service === null || !Text::isHandle($service['category'])) {
                 continue;
@@ -93,28 +145,66 @@ final class EmbedRewriter
     }
 
     /**
+     * The next occurrence of a quote character, remembering the answer so an unclosed quote is searched for once.
+     *
+     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>} $ctx
+     */
+    private static function quote(string $html, string $quote, int $from, array &$ctx): int|false
+    {
+        $cached = $ctx['q'][$quote] ?? null;
+
+        if ($cached !== null && $cached[0] <= $from && ($cached[1] === false || $cached[1] >= $from)) {
+            return $cached[1];
+        }
+
+        $found = strpos($html, $quote, $from);
+        $ctx['q'][$quote] = [$from, $found];
+
+        return $found;
+    }
+
+    /**
      * Reads a start or end tag with the WHATWG tokenizer rules for names and attributes. Quotes only delimit a value
      * where a value starts; elsewhere they are literal. Returns null when the input ends before `>` (a browser never
-     * emits such a tag).
+     * emits such a tag). Throws when the context's work budget is spent.
+     *
+     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>} $ctx
      *
      * @return array{end: int, attrs: list<array{name: string, at: int, value: string}>}|null
      */
-    private static function tag(string $html, int $from, int &$budget): ?array
+    private static function tag(string $html, int $from, array &$ctx): ?array
     {
         $n = strlen($html);
+
+        if ($ctx['gt'] === false || $from > $ctx['gt']) {
+            return null;
+        }
+
         $i = $from + strcspn($html, self::SPACE . '/>', $from);
         $attrs = [];
+        $visited = [];
+        $end = null;
 
         while (true) {
-            $budget -= 1;
             $i += strspn($html, self::SPACE . '/', $i);
 
+            if (isset($ctx['memo'][$i])) {
+                $end = $ctx['memo'][$i][0];
+                $attrs = array_merge($attrs, $ctx['memo'][$i][1]);
+
+                break;
+            }
+
+            $visited[] = [$i, count($attrs)];
+
             if ($i >= $n) {
-                return null;
+                break;
             }
 
             if ($html[$i] === '>') {
-                return ['end' => $i, 'attrs' => $attrs];
+                $end = $i;
+
+                break;
             }
 
             $start = $i;
@@ -127,20 +217,14 @@ final class EmbedRewriter
                 $j += 1 + strspn($html, self::SPACE, $j + 1);
 
                 if ($j >= $n) {
-                    return null;
+                    break;
                 }
 
                 if ($html[$j] === '"' || $html[$j] === "'") {
-                    $close = strpos($html, $html[$j], $j + 1);
+                    $close = self::quote($html, $html[$j], $j + 1, $ctx);
 
                     if ($close === false) {
-                        $budget -= $n - $j;
-
-                        if ($budget < 0) {
-                            throw new \RuntimeException('The page is too tangled to scan safely.');
-                        }
-
-                        return null;
+                        break;
                     }
 
                     $value = substr($html, $j + 1, $close - $j - 1);
@@ -152,25 +236,45 @@ final class EmbedRewriter
                 }
             }
 
-            $attrs[] = ['name' => $name, 'at' => $start, 'value' => $value];
-            $budget -= $j - $start;
+            if (in_array($name, ['src', 'srcdoc', 'width', 'height'], true) || str_starts_with($name, 'data-cmk-')) {
+                $attrs[] = ['name' => $name, 'at' => $start, 'value' => $value];
+            }
 
-            if ($budget < 0) {
+            $ctx['budget'] -= 4 + $j - $start;
+
+            if ($ctx['budget'] < 0 || count($attrs) > 256) {
                 throw new \RuntimeException('The page is too tangled to scan safely.');
             }
 
             $i = $j;
         }
+
+        // A long scan is remembered per attribute boundary, so overlapping scans of the same bytes cost O(1) each.
+        if (count($visited) > 32) {
+            foreach ($visited as [$boundary, $count]) {
+                if (count($ctx['memo']) >= 20000) {
+                    break;
+                }
+
+                if (count($attrs) - $count <= 16) {
+                    $ctx['memo'][$boundary] = [$end, array_slice($attrs, $count)];
+                }
+            }
+        }
+
+        return $end === null ? null : ['end' => $end, 'attrs' => $attrs];
     }
 
     /**
-     * Layer 2: the iframe start tags that are real markup, mapped to the offset of their `</iframe` closer.
+     * Layer 2: the iframe start tags that are real markup, mapped to the offset of their `</iframe` closer. Stops
+     * (so later iframes get no placeholder) wherever the reading could differ from a browser's.
+     *
+     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>} $ctx
      *
      * @return array<int, int>
      */
-    private static function real(string $html, int &$budget): array
+    private static function real(string $html, array &$ctx): array
     {
-        $n = strlen($html);
         $i = 0;
         $real = [];
 
@@ -185,7 +289,7 @@ final class EmbedRewriter
                         $i = $s + 1;
                     } elseif (substr_compare($html, '->', $s, 2) === 0) {
                         $i = $s + 2;
-                    } elseif (preg_match('/--!?>/', $html, $m, PREG_OFFSET_CAPTURE, $s) === 1) {
+                    } elseif (self::ok(preg_match('/--!?>/', $html, $m, PREG_OFFSET_CAPTURE, $s)) === 1) {
                         $i = $m[0][1] + strlen($m[0][0]);
                     } else {
                         break;
@@ -207,13 +311,13 @@ final class EmbedRewriter
                 }
 
                 if (ctype_alpha($d)) {
-                    $tag = self::tag($html, $i + 2, $budget);
+                    $tag = self::tag($html, $i + 2, $ctx);
                     $close = $tag === null ? false : $tag['end'];
                 } else {
                     $close = strpos($html, '>', $i);
                 }
             } elseif (ctype_alpha($c)) {
-                $tag = self::tag($html, $i + 1, $budget);
+                $tag = self::tag($html, $i + 1, $ctx);
 
                 if ($tag === null) {
                     break;
@@ -227,12 +331,17 @@ final class EmbedRewriter
                 }
 
                 if (in_array($name, self::RAW_TEXT, true)) {
-                    if (preg_match('#</' . $name . '(?=[\t\n\f\r />])#i', $html, $m, PREG_OFFSET_CAPTURE, $close + 1) !== 1) {
+                    if (self::ok(preg_match('#</' . $name . '(?=[\t\n\f\r />])#i', $html, $m, PREG_OFFSET_CAPTURE, $close + 1)) !== 1) {
                         if ($name === 'iframe') {
                             // Never closed: still real markup, but no wrapper can be placed.
                             $real[$i] = -1;
                         }
 
+                        break;
+                    }
+
+                    // A "<!--" inside script data starts the double-escape states, whose end a browser finds differently.
+                    if ($name === 'script' && str_contains(substr($html, $close + 1, $m[0][1] - $close - 1), '<!--')) {
                         break;
                     }
 
@@ -263,24 +372,25 @@ final class EmbedRewriter
     /**
      * @param list<array{at: int, nameEnd: int, tagEnd: int, attrs: list<array{name: string, at: int, value: string}>, service: array{name: string, category: string, categoryTitle: string, domains: list<string>}, url: string, values: array<string, string>}> $found
      * @param array{message: string, accept: string, customise: string}                                                                                                                                                                                           $text
+     * @param array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>}                                                                        $ctx
      *
-     * @return list<array{0: int, 1: int, 2: int, 3: string}> offset, order, bytes to delete, text to insert
+     * @return array<int, array{0: int, 1: int, 2: int, 3: string}> keyed by offset * 4 + order; offset, order, bytes to delete, text to insert
      */
-    private static function edits(string $html, array $found, array $text, int &$budget): array
+    private static function edits(string $html, array $found, array $text, array &$ctx): array
     {
-        $real = self::real($html, $budget);
+        $real = self::real($html, $ctx);
         $edits = [];
 
         foreach ($found as $f) {
             $category = $f['service']['category'];
             $next = $html[$f['nameEnd']] ?? '';
-            $edits[$f['nameEnd'] . ':i'] = [$f['nameEnd'], 1, 0, ' data-cmk-embed=' . $category . ($next === '/' ? ' ' : '')];
+            $edits[$f['nameEnd'] * 4 + 3] = [$f['nameEnd'], 1, 0, ' data-cmk-embed=' . $category . ($next === '/' ? ' ' : '')];
 
             foreach ($f['attrs'] as $attribute) {
                 if ($attribute['name'] === 'src') {
-                    $edits[$attribute['at'] . ':r'] = [$attribute['at'], 0, 3, 'data-cmk-src'];
+                    $edits[$attribute['at'] * 4 + 2] = [$attribute['at'], 0, 3, 'data-cmk-src'];
                 } elseif (str_starts_with($attribute['name'], 'data-cmk-')) {
-                    $edits[($attribute['at'] + 8) . ':r'] = [$attribute['at'] + 8, 0, 1, '_'];
+                    $edits[($attribute['at'] + 8) * 4 + 2] = [$attribute['at'] + 8, 0, 1, '_'];
                 }
             }
 
@@ -290,25 +400,25 @@ final class EmbedRewriter
                 continue;
             }
 
-            $end = self::tag($html, $closer + 2, $budget);
+            $end = self::tag($html, $closer + 2, $ctx);
 
             if ($end === null) {
                 continue;
             }
 
-            $edits[$f['at'] . ':p'] = [$f['at'], 0, 0, self::placeholder($f['values'], $f['service'], $text)];
-            $edits[($end['end'] + 1) . ':c'] = [$end['end'] + 1, 0, 0, '</span>'];
+            $edits[$f['at'] * 4 + 1] = [$f['at'], 0, 0, self::placeholder($f['values'], $f['service'], $text)];
+            $edits[($end['end'] + 1) * 4] = [$end['end'] + 1, 0, 0, '</span>'];
         }
 
-        return array_values($edits);
+        return $edits;
     }
 
     /**
-     * @param list<array{0: int, 1: int, 2: int, 3: string}> $edits
+     * @param array<int, array{0: int, 1: int, 2: int, 3: string}> $edits
      */
     private static function splice(string $html, array $edits): string
     {
-        usort($edits, static fn(array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+        ksort($edits);
 
         $out = '';
         $cursor = 0;
@@ -336,12 +446,15 @@ final class EmbedRewriter
         $category = Output::e($service['category']);
         $style = '';
 
-        if (preg_match('/^\d{1,4}\z/', trim(self::decode($values['width'] ?? ''))) === 1) {
-            $style .= 'width:' . (int) trim(self::decode($values['width'])) . 'px;';
+        $width = trim(self::decode($values['width'] ?? ''));
+        $height = trim(self::decode($values['height'] ?? ''));
+
+        if (self::ok(preg_match('/^\d{1,4}\z/', $width)) === 1) {
+            $style .= 'width:' . (int) $width . 'px;';
         }
 
-        if (preg_match('/^\d{1,4}\z/', trim(self::decode($values['height'] ?? ''))) === 1) {
-            $style .= 'min-height:' . (int) trim(self::decode($values['height'])) . 'px;';
+        if (self::ok(preg_match('/^\d{1,4}\z/', $height)) === 1) {
+            $style .= 'min-height:' . (int) $height . 'px;';
         }
 
         return '<span class="cmk-embed"' . ($style === '' ? '' : ' style="' . $style . '"') . '>'
@@ -354,7 +467,125 @@ final class EmbedRewriter
     }
 
     /**
-     * Decodes character references the way an attribute value is read: numeric ones with or without the semicolon.
+     * The coarse cross-check. For every iframe start tag (read up to its next `>`, extended while quotes are unbalanced)
+     * that has an attribute literally named `src`, the tag text is folded as hard as it can be (tabs and newlines
+     * dropped, every character reference decoded even without a semicolon, percent-decoded, NFKC-folded, invisible
+     * characters dropped) and the `src` value is tested for a known domain at a label boundary in an authority
+     * position. It may over-report; it shares no code with decode(), parse() or match(). With `null` services any
+     * iframe still carrying a `src` attribute is reported (used to verify a plain rename).
+     *
+     * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}>|null $services
+     *
+     * @return list<int>
+     */
+    private static function coarse(string $html, ?array $services): array
+    {
+        $patterns = [];
+
+        foreach ($services ?? [] as $service) {
+            foreach ($service['domains'] as $domain) {
+                $base = self::base($domain);
+
+                if ($base !== '') {
+                    $patterns[] = '~(?<![a-z0-9_:.-])src\s*=[\x00-\x20"\']*(?:https?:|//)/*(?:[^/?#\s"\'>@]*@)?(?:[a-z0-9-]*\.)*' . preg_quote($base, '~') . '\.?(?=[/:?#\s"\'>]|$)~';
+                }
+            }
+        }
+
+        self::ok(preg_match_all(self::OCCURRENCE, $html, $matches, PREG_OFFSET_CAPTURE));
+
+        $last = strrpos($html, '>');
+        $budget = 32 * strlen($html) + 8_000_000;
+        $live = [];
+
+        foreach ($matches[0] as [, $at]) {
+            if ($last === false || $at > $last) {
+                continue;
+            }
+
+            $end = strpos($html, '>', $at);
+
+            for ($extend = 0; $extend < 8 && $end !== false && $end < $last && (substr_count($html, '"', $at, $end - $at) % 2 === 1 || substr_count($html, "'", $at, $end - $at) % 2 === 1); ++$extend) {
+                $end = strpos($html, '>', $end + 1);
+            }
+
+            $raw = substr($html, $at, ($end === false ? $last : $end) - $at);
+            $budget -= 3 * strlen($raw);
+
+            if ($budget < 0) {
+                throw new \RuntimeException('The page is too tangled to scan safely.');
+            }
+
+            if (self::ok(preg_match('/(?<![a-z0-9_:.-])src\s*=/i', $raw)) !== 1) {
+                continue;
+            }
+
+            // A browser ignores src when srcdoc is present (the matcher agrees), so such a tag loads nothing.
+            if ($services !== null && self::ok(preg_match('/(?<![a-z0-9_:.-])srcdoc\s*=/i', $raw)) === 1) {
+                continue;
+            }
+
+            if ($services === null) {
+                $live[] = $at;
+
+                continue;
+            }
+
+            $folded = self::fold($raw);
+
+            foreach ($patterns as $pattern) {
+                if (self::ok(preg_match($pattern, $folded)) === 1) {
+                    $live[] = $at;
+
+                    break;
+                }
+            }
+        }
+
+        return $live;
+    }
+
+    private static function fold(string $raw): string
+    {
+        $text = str_replace(["\t", "\r", "\n"], '', $raw);
+        $text = self::str(preg_replace_callback('/&(?:#[xX]([0-9a-fA-F]+)|#([0-9]+)|([A-Za-z][A-Za-z0-9]*));?/', static function (array $m): string {
+            if (($m[3] ?? '') !== '') {
+                for ($length = strlen($m[3]); $length >= 2; --$length) {
+                    $prefix = substr($m[3], 0, $length);
+                    $decoded = html_entity_decode('&' . $prefix . ';', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+                    if ($decoded !== '&' . $prefix . ';') {
+                        return $decoded . substr($m[3], $length);
+                    }
+                }
+
+                return $m[0];
+            }
+
+            $hex = $m[1] !== '';
+            $digits = ltrim($hex ? $m[1] : ($m[2] ?? ''), '0');
+            $code = $digits === '' || strlen($digits) > 8 ? 0 : ($hex ? (int) hexdec($digits) : (int) $digits);
+
+            return $code > 0 && $code <= 0x10FFFF && ($code < 0xD800 || $code > 0xDFFF) ? (string) mb_chr($code, 'UTF-8') : "\u{FFFD}";
+        }, $text));
+
+        $text = rawurldecode($text);
+
+        if (class_exists(\Normalizer::class)) {
+            $text = \Normalizer::normalize($text, \Normalizer::FORM_KC) ?: $text;
+        }
+
+        $text = str_replace(["\xC2\xAD", "\xE2\x80\x8B", "\xE2\x80\x8C", "\xE2\x80\x8D", "\xE2\x81\xA0", "\xEF\xBB\xBF", "\xCD\x8F", "\xE3\x80\x82", "\xEF\xBD\xA1", '\\'], ['', '', '', '', '', '', '', '.', '.', '/'], $text);
+        $text = strtolower(mb_strtolower($text, 'UTF-8'));
+
+        return self::str(preg_replace('~/{2,}~', '//', $text));
+    }
+
+    /**
+     * Decodes character references the way a browser reads an attribute value, in one pass (no double decoding):
+     * numeric references with any number of digits, with or without the semicolon, out-of-range values becoming
+     * U+FFFD; named references with the semicolon; and the legacy names without one, unless the next character is
+     * alphanumeric or `=`.
      */
     private static function decode(string $value): string
     {
@@ -362,13 +593,42 @@ final class EmbedRewriter
             return $value;
         }
 
-        $value = preg_replace_callback('/&#(?:[xX]([0-9a-fA-F]{1,8})|([0-9]{1,10}));?/', static function (array $m): string {
-            $code = $m[1] !== '' ? (int) hexdec($m[1]) : (int) $m[2];
+        return self::str(preg_replace_callback('/&(?:#[xX]([0-9a-fA-F]+)|#([0-9]+)|([A-Za-z][A-Za-z0-9]*))(;?)(?=(.?))/s', static function (array $m): string {
+            if ($m[3] === '') {
+                $hex = $m[1] !== '';
+                $digits = ltrim($hex ? $m[1] : $m[2], '0');
+                $code = $digits === '' || strlen($digits) > ($hex ? 6 : 7) ? 0 : ($hex ? (int) hexdec($digits) : (int) $digits);
 
-            return $code > 0 && $code <= 0x10FFFF && ($code < 0xD800 || $code > 0xDFFF) ? (string) mb_chr($code, 'UTF-8') : "\u{FFFD}";
-        }, $value) ?? '';
+                return $code > 0 && $code <= 0x10FFFF && ($code < 0xD800 || $code > 0xDFFF) ? (string) mb_chr($code, 'UTF-8') : "\u{FFFD}";
+            }
 
-        return html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $name = $m[3];
+
+            if ($m[4] === ';') {
+                $decoded = html_entity_decode('&' . $name . ';', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+                if ($decoded !== '&' . $name . ';') {
+                    return $decoded;
+                }
+            }
+
+            for ($length = min(strlen($name), 6); $length >= 2; --$length) {
+                $prefix = substr($name, 0, $length);
+
+                if (!in_array($prefix, self::LEGACY, true)) {
+                    continue;
+                }
+
+                // In an attribute value a legacy reference without a semicolon is literal before "=" or an alphanumeric.
+                if ($length < strlen($name) || ($m[4] === '' && $m[5] === '=')) {
+                    return $m[0];
+                }
+
+                return html_entity_decode('&' . $prefix . ';', ENT_QUOTES | ENT_HTML5, 'UTF-8') . $m[4];
+            }
+
+            return $m[0];
+        }, $value));
     }
 
     /**
@@ -387,7 +647,7 @@ final class EmbedRewriter
             $url = 'https:' . $url;
         }
 
-        if (preg_match('#^(https?):/*+(.*+)\z#is', $url, $m) !== 1) {
+        if (self::ok(preg_match('#^(https?):/*+(.*+)\z#is', $url, $m)) !== 1) {
             return null;
         }
 
@@ -402,8 +662,7 @@ final class EmbedRewriter
         if (str_starts_with($hostPart, '[')) {
             $host = null;
         } else {
-            $hostPart = (string) preg_replace('/:\d*+\z/', '', $hostPart);
-            $host = self::cleanHost($hostPart);
+            $host = self::cleanHost(self::str(preg_replace('/:\d*+\z/', '', $hostPart)));
         }
 
         return [
@@ -421,7 +680,7 @@ final class EmbedRewriter
             return null;
         }
 
-        if (preg_match('/^[a-z0-9.-]+\z/', $host) !== 1) {
+        if (self::ok(preg_match('/^[a-z0-9.-]+\z/', $host)) !== 1) {
             if (!function_exists('idn_to_ascii')) {
                 return null;
             }
@@ -430,7 +689,7 @@ final class EmbedRewriter
             $host = is_string($ascii) ? rtrim(strtolower($ascii), '.') : '';
         }
 
-        return preg_match('/^[a-z0-9.-]+\z/', $host) === 1 ? $host : null;
+        return self::ok(preg_match('/^[a-z0-9.-]+\z/', $host)) === 1 ? $host : null;
     }
 
     /**
@@ -472,6 +731,26 @@ final class EmbedRewriter
 
     /**
      * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
+     *
+     * @return array{name: string, category: string, categoryTitle: string, domains: list<string>}|null
+     */
+    private static function matchHost(string $host, array $services): ?array
+    {
+        foreach ($services as $service) {
+            foreach ($service['domains'] as $domain) {
+                $base = self::base($domain);
+
+                if ($base !== '' && ($host === $base || str_ends_with($host, '.' . $base))) {
+                    return $service;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
      * @param array{message: string, accept: string, customise: string}                                 $text
      * @param callable(\Throwable): void                                                                $onError
      */
@@ -482,14 +761,18 @@ final class EmbedRewriter
         }
 
         try {
-            $budget = 4 * strlen($html) + 2_000_000;
-            $found = self::occurrences($html, $services, $budget);
+            $ctx = self::context($html, 4);
+            $found = self::occurrences($html, $services, $ctx);
 
             if ($found === []) {
+                if (self::coarse($html, $services) !== []) {
+                    throw new \RuntimeException('An iframe the matcher did not recognise still looks like a known service.');
+                }
+
                 return $html;
             }
 
-            $out = self::splice($html, self::edits($html, $found, $text, $budget));
+            $out = self::splice($html, self::edits($html, $found, $text, $ctx));
 
             if (self::audit($out, $services) !== []) {
                 throw new \RuntimeException('A blocked iframe is still live after rewriting.');
@@ -504,32 +787,56 @@ final class EmbedRewriter
     }
 
     /**
-     * Renames `src` to `data-cmk-src` in every iframe start tag, whether or not it names a known service. Used when
-     * the page cannot be rewritten precisely. The extent of a tag is read both quote-aware and plain, so a quote
-     * the browser reads differently cannot hide a `src`.
+     * Renames `src` to `data-cmk-src` in every iframe start tag, whether or not it names a known service, reading each
+     * tag with the browser grammar and no PCRE. If that fails, or the coarse check still finds an iframe with a `src`,
+     * every `<iframe` tag is renamed `<cmk-blocked-iframe` instead. Never returns an empty page for a non-empty one.
      */
     public static function failClosed(string $html): string
     {
-        $rename = static fn(array $found): string => $found[1] . (preg_replace('#(?<![A-Za-z0-9_:.-])src(?=[\t\n\f\r /]*=)#i', 'data-cmk-src', $found[2]) ?? '');
+        try {
+            $ctx = self::context($html, 32, 8_000_000);
+            $edits = [];
+            $offset = 0;
 
-        $out = preg_replace_callback('#(<iframe)(?=[\t\n\f\r />])((?:[^>"\']++|"[^"]*+"|\'[^\']*+\')*+>?)#i', $rename, $html);
-        $out = $out === null ? null : preg_replace_callback('#(<iframe)(?=[\t\n\f\r />])([^>]*+>?)#i', $rename, $out);
+            while (($at = stripos($html, '<iframe', $offset)) !== false) {
+                $offset = $at + 7;
 
-        return $out ?? '';
+                if (!self::delimited($html, $offset)) {
+                    continue;
+                }
+
+                foreach (self::tag($html, $at + 1, $ctx)['attrs'] ?? [] as $attribute) {
+                    if ($attribute['name'] === 'src') {
+                        $edits[$attribute['at'] * 4] = [$attribute['at'], 0, 3, 'data-cmk-src'];
+                    }
+                }
+            }
+
+            $out = self::splice($html, $edits);
+
+            if (self::coarse($out, null) === []) {
+                return $out;
+            }
+        } catch (\Throwable) {
+        }
+
+        return self::neutralise($html);
     }
 
     /**
-     * The iframe occurrences whose `src` still names a known service. Empty when nothing is live.
+     * Offsets of iframe start tags whose `src` still names a known service: the matcher's reading plus a deliberately
+     * coarse second reading that does not share the matcher's decoding, URL parsing or domain matching.
      *
      * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
      *
-     * @return list<int> byte offsets
+     * @return list<int>
      */
     public static function audit(string $html, array $services): array
     {
-        $budget = 4 * strlen($html) + 2_000_000;
+        $ctx = self::context($html, 32, 8_000_000);
+        $strict = array_column(self::occurrences($html, $services, $ctx), 'at');
 
-        return array_column(self::occurrences($html, $services, $budget), 'at');
+        return array_values(array_unique(array_merge($strict, self::coarse($html, $services))));
     }
 
     /**
@@ -549,20 +856,6 @@ final class EmbedRewriter
     {
         $host = self::host($url);
 
-        if ($host === null) {
-            return null;
-        }
-
-        foreach ($services as $service) {
-            foreach ($service['domains'] as $domain) {
-                $base = self::base($domain);
-
-                if ($base !== '' && ($host === $base || str_ends_with($host, '.' . $base))) {
-                    return $service;
-                }
-            }
-        }
-
-        return null;
+        return $host === null ? null : self::matchHost($host, $services);
     }
 }
