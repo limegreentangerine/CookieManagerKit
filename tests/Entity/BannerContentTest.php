@@ -22,6 +22,26 @@ final class BannerContentTest extends TestCase
         $this->assertSame('Accept', $content->getAcceptAllLabel());
     }
 
+    public function testEmbedTextIsPlainAndCapped(): void
+    {
+        $row = (new BannerContent())->setLocale('en_GB')
+            ->setEmbedMessage('<b>Needs</b> consent ' . str_repeat('x', 600))
+            ->setEmbedAcceptLabel('<i>Accept</i> ' . str_repeat('y', 100));
+
+        $this->assertStringStartsWith('Needs consent', $row->getEmbedMessage());
+        $this->assertSame(500, mb_strlen($row->getEmbedMessage()));
+        $this->assertSame(64, mb_strlen($row->getEmbedAcceptLabel()));
+    }
+
+    public function testARowWithOnlyEmbedTextIsNotEmpty(): void
+    {
+        $row = (new BannerContent())->setLocale('en_GB');
+        $this->assertTrue($row->isEmpty());
+
+        $row->setEmbedAcceptLabel('Accept');
+        $this->assertFalse($row->isEmpty());
+    }
+
     public function testLabelsAreCapped(): void
     {
         $this->assertSame(64, mb_strlen((new BannerContent())->setSaveLabel(str_repeat('a', 500))->getSaveLabel()));

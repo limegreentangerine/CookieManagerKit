@@ -27,6 +27,8 @@ final class Catalog
         'save' => 'Save my choices',
         'widget' => 'Cookie settings',
         'policyLinkText' => 'Cookie policy',
+        'embedMessage' => 'This content is provided by {service} and needs your consent to load.',
+        'embedAcceptLabel' => 'Accept {category} cookies',
     ];
 
     /** @var array<string, mixed>|null */
@@ -51,6 +53,8 @@ final class Catalog
                 'save' => $row->getSaveLabel(),
                 'widget' => $row->getWidgetLabel(),
                 'policyLinkText' => $row->getPolicyLinkText(),
+                'embedMessage' => $row->getEmbedMessage(),
+                'embedAcceptLabel' => $row->getEmbedAcceptLabel(),
                 'policyUrl' => self::pageUrl($row->getPolicyPageId()),
             ];
         }

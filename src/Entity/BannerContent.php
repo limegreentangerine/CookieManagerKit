@@ -64,6 +64,16 @@ class BannerContent extends UpdatedEntity
     protected $policyLinkText = '';
 
     /**
+     * @ORM\Column(type="text", nullable=false, options={"comment": "Message shown instead of a blocked embed (plain text)"})
+     */
+    protected $embedMessage = '';
+
+    /**
+     * @ORM\Column(type="string", length=64, nullable=false, options={"default": "", "comment": "Button on a blocked embed"})
+     */
+    protected $embedAcceptLabel = '';
+
+    /**
      * @ORM\Column(type="integer", nullable=true, options={"comment": "Cookie policy page cID"})
      */
     protected $policyPageId = null;
@@ -194,10 +204,35 @@ class BannerContent extends UpdatedEntity
         return $this;
     }
 
+    public function getEmbedMessage(): string
+    {
+        return (string) $this->embedMessage;
+    }
+
+    public function setEmbedMessage(?string $value): self
+    {
+        $this->embedMessage = Text::multiline($value, 500);
+
+        return $this;
+    }
+
+    public function getEmbedAcceptLabel(): string
+    {
+        return (string) $this->embedAcceptLabel;
+    }
+
+    public function setEmbedAcceptLabel(?string $value): self
+    {
+        $this->embedAcceptLabel = Text::plain($value, 64);
+
+        return $this;
+    }
+
     public function isEmpty(): bool
     {
         return $this->title === '' && $this->body === '' && $this->acceptAllLabel === '' && $this->rejectAllLabel === ''
             && $this->customiseLabel === '' && $this->saveLabel === '' && $this->widgetLabel === ''
-            && $this->policyLinkText === '' && $this->policyPageId === null;
+            && $this->policyLinkText === '' && $this->policyPageId === null
+            && $this->embedMessage === '' && $this->embedAcceptLabel === '';
     }
 }
