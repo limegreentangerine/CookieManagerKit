@@ -604,4 +604,92 @@ final class EmbedRewriterTest extends TestCase
         $this->assertSame($html, $this->rewrite($html));
         $this->assertSame([], $this->errors);
     }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function outlinedLetters(): iterable
+    {
+        $cases = [
+            '1CCE2' => 'https://www.youtube.co%s/embed/x',
+            '1CCEE' => 'https://www.%soutube.com/embed/x',
+            '1CCE9' => 'https://www.you%sube.com/embed/x',
+        ];
+
+        foreach ($cases as $hex => $format) {
+            $char = (string) mb_chr((int) hexdec($hex), 'UTF-8');
+
+            yield "U+$hex numeric" => ['<iframe src="' . sprintf($format, '&#x' . $hex . ';') . '"></iframe><p>x</p>'];
+            yield "U+$hex literal" => ['<iframe src="' . sprintf($format, $char) . '"></iframe><p>x</p>'];
+            yield "U+$hex percent" => ['<iframe src="' . sprintf($format, rawurlencode($char)) . '"></iframe><p>x</p>'];
+        }
+    }
+
+    /**
+     * Holds under old ICU (unfoldable, whole page fails closed) and new ICU (folds, placeholder or fail closed).
+     */
+    #[DataProvider('outlinedLetters')]
+    public function testUnicodeSixteenLettersNeverLeaveALiveMatchedFrame(string $html): void
+    {
+        $out = $this->rewrite($html);
+
+        $this->assertNotSame('', $out);
+        $this->assertStringContainsString('<p>x</p>', $out);
+        $this->assertSame([], EmbedRewriter::audit($out, self::SERVICES));
+        $this->assertTrue(str_contains($out, self::MARKETING) || str_contains($out, '<iframe srcdoc'), 'blocked one way or the other');
+    }
+
+    public function testAnUnassignedCodePointInAHostFailsTheWholePageClosed(): void
+    {
+        $html = '<p>a</p><iframe src="https://www.youtube.co&#x0378;/embed/x"></iframe><iframe src="https://example.org/"></iframe>';
+        $out = $this->rewrite($html);
+
+        $this->assertSame(substr_count($html, '<iframe'), substr_count($out, '<iframe srcdoc'));
+        $this->assertNotSame([], $this->errors);
+        $this->assertSame('unfoldable host', $this->errors[0]->getMessage());
+        $this->assertStringContainsString('<p>a</p>', $out);
+    }
+
+    public function testWithoutIntlANonAsciiHostThatFailsValidationFailsClosed(): void
+    {
+        $flag = new \ReflectionProperty(EmbedRewriter::class, 'withoutIntl');
+        $flag->setValue(null, true);
+
+        try {
+            $out = $this->rewrite("<iframe src=\"https://www.\u{FF59}outube.com/embed/x\"></iframe><p>x</p>");
+        } finally {
+            $flag->setValue(null, false);
+        }
+
+        $this->assertStringContainsString('<iframe srcdoc', $out);
+        $this->assertStringContainsString('<p>x</p>', $out);
+        $this->assertSame('unfoldable host', $this->errors[0]->getMessage());
+    }
+
+    public function testHostsThatValidateAreUntouched(): void
+    {
+        foreach (["<iframe src=\"https://m\u{FC}nchen.de/x\"></iframe>", "<iframe src=\"https://www.y\u{F6}utube.com/x\"></iframe>"] as $html) {
+            $this->assertSame($html, $this->rewrite($html));
+            $this->assertSame([], $this->errors);
+        }
+    }
+
+    public function testAssertFoldableAcceptsAsciiAndDefinedCharactersOnly(): void
+    {
+        $check = new \ReflectionMethod(EmbedRewriter::class, 'assertFoldable');
+        $check->invoke(null, 'youtube.com', false, false);
+        $check->invoke(null, "a\u{115F}b", true, true);
+
+        foreach ([["a\u{0378}b", true, true], ["a\u{115F}b", false, true], ["a\u{115F}b", true, false], ["a\xFFb", true, true]] as [$host, $n, $i]) {
+            $message = null;
+
+            try {
+                $check->invoke(null, $host, $n, $i);
+            } catch (\RuntimeException $e) {
+                $message = $e->getMessage();
+            }
+
+            $this->assertSame('unfoldable host', $message);
+        }
+    }
 }

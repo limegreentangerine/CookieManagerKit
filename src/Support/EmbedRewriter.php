@@ -35,7 +35,9 @@ namespace CookieManagerKit\Support;
  * Accepted limits: a page with more than 1000 `<iframe` or more than 4 MB is fully blocked with ` srcdoc` (unmatched
  * iframes too, no placeholders); the fail-closed path inserts that text into any context, including scripts and
  * comments; the server's ICU version can differ from a browser's IDNA tables, which is handled by guess() (a host that
- * fails validation is read with every character outside [a-z0-9.-] deleted and matched at a label boundary).
+ * fails validation is read with every character outside [a-z0-9.-] deleted and matched at a label boundary). A host
+ * that fails validation and still holds a non-ASCII character the server cannot fold (unassigned in its ICU, or no
+ * intl extension to fold with) cannot be read reliably, so the whole page is blocked with ` srcdoc`.
  *
  * Call rewrite() only on public front-end page output, never on edit-mode or dashboard output.
  *
@@ -48,6 +50,9 @@ final class EmbedRewriter
     private const RAW_TEXT = ['script', 'style', 'textarea', 'title', 'xmp', 'noembed', 'noframes', 'iframe', 'noscript'];
     private const LEGACY = ['AElig', 'AMP', 'Aacute', 'Acirc', 'Agrave', 'Aring', 'Atilde', 'Auml', 'COPY', 'Ccedil', 'ETH', 'Eacute', 'Ecirc', 'Egrave', 'Euml', 'GT', 'Iacute', 'Icirc', 'Igrave', 'Iuml', 'LT', 'Ntilde', 'Oacute', 'Ocirc', 'Ograve', 'Oslash', 'Otilde', 'Ouml', 'QUOT', 'REG', 'THORN', 'Uacute', 'Ucirc', 'Ugrave', 'Uuml', 'Yacute', 'aacute', 'acirc', 'acute', 'aelig', 'agrave', 'amp', 'aring', 'atilde', 'auml', 'brvbar', 'ccedil', 'cedil', 'cent', 'copy', 'curren', 'deg', 'divide', 'eacute', 'ecirc', 'egrave', 'eth', 'euml', 'frac12', 'frac14', 'frac34', 'gt', 'iacute', 'icirc', 'iexcl', 'igrave', 'iquest', 'iuml', 'laquo', 'lt', 'macr', 'micro', 'middot', 'nbsp', 'not', 'ntilde', 'oacute', 'ocirc', 'ograve', 'ordf', 'ordm', 'oslash', 'otilde', 'ouml', 'para', 'plusmn', 'pound', 'quot', 'raquo', 'reg', 'sect', 'shy', 'sup1', 'sup2', 'sup3', 'szlig', 'thorn', 'times', 'uacute', 'ucirc', 'ugrave', 'uml', 'uuml', 'yacute', 'yen', 'yuml'];
     private const SPACE = "\t\n\f\r ";
+
+    /** Test seam: simulates a server without the intl extension. */
+    private static bool $withoutIntl = false;
 
     /**
      * @return array{budget: int, q: array<string, array{0: int, 1: int|false}>, gt: int|false, memo: array<int, array{0: int|null, 1: list<array{name: string, at: int, value: string}>}>}
@@ -728,14 +733,41 @@ final class EmbedRewriter
     {
         $host = rawurldecode($host);
 
-        if (class_exists(\Normalizer::class)) {
+        $normalizer = !self::$withoutIntl && class_exists(\Normalizer::class);
+
+        if ($normalizer) {
             $host = \Normalizer::normalize($host, \Normalizer::FORM_KC) ?: $host;
         }
 
         $host = str_replace(["\xE3\x80\x82", "\xEF\xBC\x8E", "\xEF\xBD\xA1"], '.', mb_strtolower($host, 'UTF-8'));
+
+        self::assertFoldable($host, $normalizer, !self::$withoutIntl && class_exists(\IntlChar::class));
         $host = trim(self::str(preg_replace('/[^a-z0-9.-]+/', '', strtolower($host))), '.');
 
         return $host === '' ? null : $host;
+    }
+
+    /**
+     * Fails closed when a non-ASCII character is left that this server cannot fold to ASCII: a browser with newer
+     * Unicode tables may map it to a letter of a service domain. Throws, which rewrite() answers with failClosed().
+     */
+    private static function assertFoldable(string $host, bool $normalizer, bool $intlChar): void
+    {
+        if (self::ok(preg_match('/^[\x00-\x7F]*+\z/', $host)) === 1) {
+            return;
+        }
+
+        if (!$normalizer || !$intlChar || !mb_check_encoding($host, 'UTF-8')) {
+            throw new \RuntimeException('unfoldable host');
+        }
+
+        foreach (mb_str_split($host, 1, 'UTF-8') as $char) {
+            $cp = mb_ord($char, 'UTF-8');
+
+            if ($cp > 0x7F && !\IntlChar::isdefined($cp)) {
+                throw new \RuntimeException('unfoldable host');
+            }
+        }
     }
 
     private static function cleanHost(string $host): ?string
@@ -747,7 +779,7 @@ final class EmbedRewriter
         }
 
         if (self::ok(preg_match('/^[a-z0-9.-]+\z/', $host)) !== 1) {
-            if (!function_exists('idn_to_ascii')) {
+            if (self::$withoutIntl || !function_exists('idn_to_ascii')) {
                 return null;
             }
 
@@ -927,7 +959,11 @@ final class EmbedRewriter
      */
     public static function host(string $url): ?string
     {
-        return self::parse($url)['host'] ?? null;
+        try {
+            return self::parse($url)['host'] ?? null;
+        } catch (\RuntimeException) {
+            return null;
+        }
     }
 
     /**
