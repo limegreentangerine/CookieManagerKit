@@ -8,6 +8,10 @@ use CookieManagerKit\Support\CsvCell;
 /**
  * Pure: the translation CSV. One file is for one target locale. Import is all or nothing: the file is parsed and
  * every key checked before a single value is written.
+ *
+ * The format is comma-delimited UTF-8. Semicolon-delimited exports (some European Excel locales) are not supported;
+ * the UI should tell translators to save as "CSV UTF-8 (comma delimited)". Spreadsheets pad rows with trailing empty
+ * cells, which are tolerated on the locale line and header.
  */
 final class TranslationCsv
 {
@@ -16,6 +20,24 @@ final class TranslationCsv
     public const MAX_BYTES = 524288;
     public const MAX_ROWS = 5000;
     public const MAX_CELL_BYTES = 10000;
+
+    /**
+     * @param array<int, string|null>|false $cells
+     *
+     * @return array<int, string|null>
+     */
+    private static function trimTrailingEmpty(array|false $cells): array
+    {
+        if ($cells === false) {
+            return [];
+        }
+
+        while ($cells !== [] && ($cells[array_key_last($cells)] === null || $cells[array_key_last($cells)] === '')) {
+            array_pop($cells);
+        }
+
+        return $cells;
+    }
 
     /**
      * @param list<Slot> $slots
@@ -49,16 +71,22 @@ final class TranslationCsv
         }
 
         try {
-            fwrite($handle, str_starts_with($csv, "\xEF\xBB\xBF") ? substr($csv, 3) : $csv);
+            $csv = str_starts_with($csv, "\xEF\xBB\xBF") ? substr($csv, 3) : $csv;
+
+            if (!mb_check_encoding($csv, 'UTF-8')) {
+                throw new \InvalidArgumentException('The file is not valid UTF-8 text.');
+            }
+
+            fwrite($handle, $csv);
             rewind($handle);
 
             $first = fgetcsv($handle, 0, ',', '"', '');
 
-            if (!is_array($first) || $first !== [self::LOCALE_LINE . $locale]) {
+            if (!is_array($first) || self::trimTrailingEmpty($first) !== [self::LOCALE_LINE . $locale]) {
                 throw new \InvalidArgumentException('The file is not for this language.');
             }
 
-            if (fgetcsv($handle, 0, ',', '"', '') !== self::HEADER) {
+            if (self::trimTrailingEmpty(fgetcsv($handle, 0, ',', '"', '')) !== self::HEADER) {
                 throw new \InvalidArgumentException('The file does not have the expected columns.');
             }
 
@@ -66,7 +94,7 @@ final class TranslationCsv
             $seen = [];
 
             while (($cells = fgetcsv($handle, 0, ',', '"', '')) !== false) {
-                if ($cells === [null]) {
+                if (self::trimTrailingEmpty($cells) === []) {
                     continue;
                 }
 

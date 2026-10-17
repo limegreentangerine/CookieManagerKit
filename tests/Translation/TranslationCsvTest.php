@@ -12,7 +12,7 @@ final class TranslationCsvTest extends TestCase
     /** @var array<string, array<string, string>> */
     private array $values = [];
 
-    /** @return array{0: array<string, array<string, string>>, 1: list<\CookieManagerKit\Translation\Slot>} */
+    /** @return list<\CookieManagerKit\Translation\Slot> */
     private function fixture(): array
     {
         $this->values = [
@@ -22,7 +22,7 @@ final class TranslationCsvTest extends TestCase
             'service|2|description' => ['en_GB' => 'Done', 'fr_FR' => 'Fait'],
         ];
 
-        return [$this->values, FakeSlots::make($this->values, ['banner||title' => 'banner', 'banner||body' => 'banner', 'cookie|3|purpose' => 'cookie', 'service|2|description' => 'service'])];
+        return FakeSlots::make($this->values, ['banner||title' => 'banner', 'banner||body' => 'banner', 'cookie|3|purpose' => 'cookie', 'service|2|description' => 'service']);
     }
 
     private function body(string $locale, array $lines): string
@@ -32,7 +32,7 @@ final class TranslationCsvTest extends TestCase
 
     public function testExportListsOnlyMissingFieldsWithAHeaderAndLocaleLine(): void
     {
-        [, $slots] = $this->fixture();
+        $slots = $this->fixture();
         $csv = TranslationCsv::export($slots, 'fr_FR', 'en_GB');
 
         $this->assertStringStartsWith("\xEF\xBB\xBF\"# locale=fr_FR\"\r\n\"key\",\"area\",\"default_text\",\"translation\"\r\n", $csv);
@@ -42,7 +42,7 @@ final class TranslationCsvTest extends TestCase
 
     public function testExportNeutralisesFormulaCellsAndKeepsMultilineText(): void
     {
-        [, $slots] = $this->fixture();
+        $slots = $this->fixture();
         $csv = TranslationCsv::export($slots, 'fr_FR', 'en_GB');
 
         $this->assertStringContainsString("\"'=HYPERLINK(\"\"http://evil\"\")\"", $csv);
@@ -51,7 +51,7 @@ final class TranslationCsvTest extends TestCase
 
     public function testAnExportedFileParsesBackToTheSameKeys(): void
     {
-        [, $slots] = $this->fixture();
+        $slots = $this->fixture();
         $rows = TranslationCsv::parse(TranslationCsv::export($slots, 'fr_FR', 'en_GB'), 'fr_FR');
 
         $this->assertSame(['banner||title', 'banner||body', 'cookie|3|purpose'], array_column($rows, 'key'));
@@ -101,7 +101,7 @@ final class TranslationCsvTest extends TestCase
 
     public function testApplyWritesNonBlankTranslationsAndCountsTheRest(): void
     {
-        [, $slots] = $this->fixture();
+        $slots = $this->fixture();
 
         $result = TranslationCsv::apply($slots, [['key' => 'banner||title', 'value' => 'Bonjour'], ['key' => 'banner||body', 'value' => '']], 'fr_FR', 'en_GB');
 
@@ -112,7 +112,7 @@ final class TranslationCsvTest extends TestCase
 
     public function testApplyMayOverwriteAnExistingTranslation(): void
     {
-        [, $slots] = $this->fixture();
+        $slots = $this->fixture();
 
         TranslationCsv::apply($slots, [['key' => 'service|2|description', 'value' => 'Terminé']], 'fr_FR', 'en_GB');
 
@@ -121,7 +121,7 @@ final class TranslationCsvTest extends TestCase
 
     public function testAnUnknownKeyRejectsTheWholeFileAndWritesNothing(): void
     {
-        [, $slots] = $this->fixture();
+        $slots = $this->fixture();
 
         try {
             TranslationCsv::apply($slots, [['key' => 'banner||title', 'value' => 'Bonjour'], ['key' => 'banner||nope', 'value' => 'x']], 'fr_FR', 'en_GB');
@@ -133,7 +133,7 @@ final class TranslationCsvTest extends TestCase
 
     public function testTheDefaultLocaleCanNeverBeTheTarget(): void
     {
-        [, $slots] = $this->fixture();
+        $slots = $this->fixture();
 
         $this->expectException(\InvalidArgumentException::class);
 
@@ -142,7 +142,7 @@ final class TranslationCsvTest extends TestCase
 
     public function testApplyDoesNotCountValuesThatSanitiseToNothing(): void
     {
-        [, $slots] = $this->fixture();
+        $slots = $this->fixture();
 
         $result = TranslationCsv::apply($slots, [['key' => 'banner||title', 'value' => "<b></b>\x01"], ['key' => 'banner||body', 'value' => 'Ok']], 'fr_FR', 'en_GB');
 
@@ -194,5 +194,48 @@ final class TranslationCsvTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
 
         TranslationCsv::parse('"# locale=fr_FR","x"' . "\r\n" . '"key","area","default_text","translation"' . "\r\n", 'fr_FR');
+    }
+
+    public function testExactlyMaxRowsAreAcceptedAndOneMoreRejected(): void
+    {
+        $lines = [];
+        for ($i = 0; $i < TranslationCsv::MAX_ROWS; $i++) {
+            $lines[] = '"k' . $i . '","a","d","t"' . "\r\n";
+        }
+
+        $this->assertCount(TranslationCsv::MAX_ROWS, TranslationCsv::parse($this->body('fr_FR', $lines), 'fr_FR'));
+
+        $lines[] = '"extra","a","d","t"' . "\r\n";
+        $this->expectException(\InvalidArgumentException::class);
+        TranslationCsv::parse($this->body('fr_FR', $lines), 'fr_FR');
+    }
+
+    public function testLfOnlyLineEndingsAndBlankTrailingLinesAreAccepted(): void
+    {
+        $csv = '"# locale=fr_FR"' . "\n" . '"key","area","default_text","translation"' . "\n" . '"a","b","c","d"' . "\n\n\n" . ',,,' . "\n";
+
+        $this->assertSame([['key' => 'a', 'value' => 'd']], TranslationCsv::parse($csv, 'fr_FR'));
+    }
+
+    public function testSpreadsheetPaddingOnLocaleLineAndHeaderIsAccepted(): void
+    {
+        $csv = '"# locale=fr_FR",,,' . "\r\n" . '"key","area","default_text","translation",,' . "\r\n" . '"a","b","c","d"' . "\r\n";
+
+        $this->assertSame([['key' => 'a', 'value' => 'd']], TranslationCsv::parse($csv, 'fr_FR'));
+    }
+
+    public function testNonEmptyExtraCellOnTheLocaleLineIsStillRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        TranslationCsv::parse('"# locale=fr_FR",,x' . "\r\n" . '"key","area","default_text","translation"' . "\r\n", 'fr_FR');
+    }
+
+    public function testInvalidUtf8IsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The file is not valid UTF-8 text.');
+
+        TranslationCsv::parse($this->body('fr_FR', ["\"a\",\"b\",\"c\",\"Caf\xE9\"\r\n"]), 'fr_FR');
     }
 }
