@@ -2,6 +2,32 @@
 
 Notable changes to this project are documented here.
 
+## 0.5.0
+
+Phase 4: cookie declaration, embed placeholders and translation assist.
+
+### Added
+
+- A cookie list per Service (Services page) and the `cookie_declaration` block (Cookie Declaration) that prints it, grouped by category, on a policy page. Approving a cookie finding pre-fills the cookie row.
+- Embed placeholders: iframes of services that are blocked until consent are replaced automatically by a placeholder, matched when the iframe host is, or is a subdomain of, one of the Service's Domains. The click-to-accept button grants only that category and is logged like any other choice. The iframe is never loaded before consent.
+- Fail-closed behaviour: pages with more than 1000 iframes or over 4 MB, or markup that cannot be analysed safely, get all iframes blanked.
+- Two new Banner fields: Blocked embed message and Blocked embed button.
+- Translations page (`/dashboard/cookie_manager/translations`): a completeness matrix, copy from default language, and CSV export and import. Save a spreadsheet as "CSV UTF-8 (comma delimited)". Imports replace existing translations with non-blank values and are all-or-nothing.
+
+### Changed
+
+- Install and upgrade now clear the cache, so new columns and tables are visible immediately.
+
+### Known limits
+
+- Iframes inside `srcdoc` attributes, `<base href>`, and `<object>`, `<embed>` and `<frame>` are not handled.
+
+### Upgrade notes
+
+- Run **Update** for the package in the dashboard. This adds the new tables and fields, the Translations page, and clears the cache.
+- Blocked embeds only work for Services that list their Domains; check each Service.
+- Add the Cookie Declaration block to your policy page.
+
 ## 0.4.0
 
 Phase 3: audit log, re-consent, Consent Mode v2 and privacy rules.

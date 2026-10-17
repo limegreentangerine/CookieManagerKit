@@ -8,6 +8,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use CookieManagerKit\Events\ConsentManager;
 use CookieManagerKit\Scan\ClassificationStore;
 use Concrete\Core\Support\Facade\{Events, Route};
+use Concrete\Core\Cache\Command\ClearCacheCommand;
 use CookieManagerKit\Support\{Catalog, Installer};
 use ClassKit\Package\Traits\{AttributeTrait, BlockTrait, PageTrait};
 use CookieManagerKit\Consent\{ConsentRecorder, DoctrineConsentLogStore, PersistingConsentRecorder};
@@ -31,7 +32,7 @@ class Controller extends PackageController
      *
      * @var string
      */
-    protected $pkgVersion = '0.4.0';
+    protected $pkgVersion = '0.5.0';
 
     /**
      * The minimum Concrete version compatible with the package.
@@ -166,6 +167,12 @@ class Controller extends PackageController
         Installer::seed($em, Catalog::defaultLocale());
         // Deliberately not caught: a failed seed must fail the install or upgrade loudly.
         (new ClassificationStore($em))->syncBundled();
+
+        // After an upgrade the new columns and tables must be visible to every cached layer, or settings saved on the
+        // new fields are silently dropped until the cache is cleared by hand (seen on the 0.3.0 to 0.4.0 Update).
+        // Same command Dashboard > System & Settings > Optimization > Clear Cache runs. Deliberately not caught.
+        app()->executeCommand(new ClearCacheCommand());
+        Catalog::flush();
     }
 
     public function registerRoutes(): void
