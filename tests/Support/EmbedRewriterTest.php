@@ -28,6 +28,18 @@ final class EmbedRewriterTest extends TestCase
         });
     }
 
+    private function assertNoLiveMatch(string $html): void
+    {
+        $doc = \Dom\HTMLDocument::createFromString($html, LIBXML_NOERROR);
+
+        foreach ($doc->querySelectorAll('iframe') as $iframe) {
+            $src = $iframe->getAttribute('src');
+
+            $this->assertTrue($src === null || EmbedRewriter::match($src, self::SERVICES) === null, 'A matched iframe is live: ' . $src);
+            $this->assertStringNotContainsString('youtube', strtolower((string) $src));
+        }
+    }
+
     #[DataProvider('matching')]
     public function testHostsMatchOnlyTheDomainOrItsSubdomains(string $url, ?string $expected): void
     {
@@ -66,7 +78,7 @@ final class EmbedRewriterTest extends TestCase
         $this->assertStringContainsString('data-cmk-open', $out);
         $this->assertStringContainsString('Provided by YouTube.', $out);
         $this->assertStringContainsString('Accept Marketing cookies', $out);
-        $this->assertStringContainsString('title="A &gt; B"', $out);
+        $this->assertStringContainsString('title="A > B"', $out);
         $this->assertStringContainsString('allowfullscreen=""', $out);
         $this->assertStringContainsString('width:560px;', $out);
         $this->assertStringContainsString('min-height:315px;', $out);
@@ -105,7 +117,7 @@ final class EmbedRewriterTest extends TestCase
     }
 
     #[DataProvider('maskedRegions')]
-    public function testIframesInsideScriptStyleTemplateNoscriptAndCommentsAreNotTouched(string $html): void
+    public function testIframesInsideRawTextRegionsAndCommentsAreNotTouched(string $html): void
     {
         $this->assertSame($html, $this->rewrite($html));
     }
@@ -117,7 +129,8 @@ final class EmbedRewriterTest extends TestCase
         yield 'script' => ['<script>document.write(\'' . $frame . '\')</script>'];
         yield 'style' => ['<style>/* ' . $frame . ' */</style>'];
         yield 'template' => ['<template>' . $frame . '</template>'];
-        yield 'noscript' => ['<noscript>' . $frame . '</noscript>'];
+        yield 'title' => ['<title>' . $frame . '</title>'];
+        yield 'textarea' => ['<textarea>' . $frame . '</textarea>'];
         yield 'comment' => ['<!-- ' . $frame . ' -->'];
         yield 'unterminated script' => ['<script>var a = \'' . $frame . '\';'];
         yield 'unterminated comment' => ['<!-- ' . $frame];
@@ -131,13 +144,18 @@ final class EmbedRewriterTest extends TestCase
         $this->assertStringContainsString('data-cmk-embed="marketing"', $out);
     }
 
-    public function testAnUnterminatedMatchedIframeIsRemovedAndReported(): void
+    public function testAnIframeInsideNoscriptIsRewrittenBecauseScriptingIsOff(): void
+    {
+        $this->assertStringContainsString('data-cmk-embed="marketing"', $this->rewrite('<noscript><iframe src="https://youtube.com/x"></iframe></noscript>'));
+    }
+
+    public function testAnUnterminatedMatchedIframeIsRewrittenAndNothingStaysLive(): void
     {
         $out = $this->rewrite('<p>A</p><iframe src="https://youtube.com/x"><p>B</p>');
 
-        $this->assertStringNotContainsString('<iframe', $out);
-        $this->assertStringContainsString('<p>A</p><p>B</p>', $out);
-        $this->assertCount(1, $this->errors);
+        $this->assertStringContainsString('data-cmk-embed="marketing"', $out);
+        $this->assertNoLiveMatch($out);
+        $this->assertSame([], $this->errors);
     }
 
     public function testAnUnterminatedUnmatchedIframeIsLeftAlone(): void
@@ -158,9 +176,9 @@ final class EmbedRewriterTest extends TestCase
             static function (\Throwable $e): void {},
         );
 
-        $this->assertStringNotContainsString('<script>', $out);
-        $this->assertStringNotContainsString('<img', $out);
-        $this->assertStringNotContainsString('<b>', $out);
+        $doc = \Dom\HTMLDocument::createFromString($out, LIBXML_NOERROR);
+
+        $this->assertSame(0, $doc->querySelectorAll('script, img, b')->length);
         $this->assertStringNotContainsString('evil.example', $out);
         $this->assertSame(1, substr_count($out, 'data-cmk-src='));
     }
@@ -193,13 +211,12 @@ final class EmbedRewriterTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<iframe[^>]*\ssrc=/i', $out);
     }
 
-    public function testAMatchedIframeWithAnUnclosedQuoteIsNeverLeftLive(): void
+    public function testAMatchedIframeWithAnUnclosedQuoteIsNeverLive(): void
     {
         $out = $this->rewrite('<p>A</p><iframe src="https://youtube.com/x" title="oops></iframe><p>B</p>');
 
-        $this->assertStringNotContainsString('youtube.com', $out);
-        $this->assertStringNotContainsString('<iframe', $out);
-        $this->assertNotSame([], $this->errors);
+        $this->assertNoLiveMatch($out);
+        $this->assertStringContainsString('<p>A</p>', $out);
     }
 
     public function testAnEntityEncodedSourceIsDecodedBeforeMatching(): void
@@ -261,22 +278,112 @@ final class EmbedRewriterTest extends TestCase
         $out = $this->rewrite($html);
 
         $this->assertLessThan(3.0, microtime(true) - $start);
-        $this->assertStringNotContainsString('<iframe', $out);
+        $this->assertNoLiveMatch($out);
     }
 
-    public function testARegexFailureRemovesEveryIframeTag(): void
+    public function testFailClosedRemovesEveryIframeTag(): void
     {
-        $previous = ini_set('pcre.backtrack_limit', '10');
-        $previousJit = ini_set('pcre.jit', '0');
+        $out = EmbedRewriter::failClosed('<p>x</p><IFRAME src="a" title=">"></iframe ><iframe-x></iframe-x><iframe/src=b><iframe src="unterminated');
 
-        try {
-            $out = $this->rewrite('<p>x</p>' . str_repeat('<iframe src="https://youtube.com/x"><b>y</b></iframe>', 20));
-        } finally {
-            ini_set('pcre.backtrack_limit', (string) $previous);
-            ini_set('pcre.jit', (string) $previousJit);
-        }
+        $this->assertDoesNotMatchRegularExpression('/<\/?iframe[\s\/>]/i', $out);
+        $this->assertStringContainsString('<p>x</p>', $out);
+        $this->assertStringContainsString('<iframe-x>', $out);
+    }
 
-        $this->assertStringNotContainsString('<iframe', $out);
-        $this->assertNotSame([], $this->errors);
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function attacks(): iterable
+    {
+        $f = '<iframe src="https://youtube.com/x"></iframe>';
+
+        yield 'C1 empty comment' => ['<!-->' . $f . '<!-- x -->'];
+        yield 'C1 dash comment' => ['<!--->' . $f . '<!-- x -->'];
+        yield 'C1 bang comment close' => ['<!-- x --!>' . $f];
+        yield 'C1 script end tag with attr' => ['<script></script x>' . $f];
+        yield 'C1 script end tag slash' => ['<script></script/>' . $f];
+        yield 'C1 bogus comment pi' => ['<? <script> ?>' . $f];
+        yield 'C1 bogus comment bang' => ['<!x <script>>' . $f];
+        yield 'C1 end tag attr' => ['</p title="<script>">' . $f];
+        yield 'C1 textarea' => ['<textarea><script></textarea>' . $f];
+        yield 'C1 title' => ['<title><!--</title>' . $f];
+        yield 'C1 iframe fallback' => ['<iframe src="https://example.org/"><script></iframe>' . $f];
+        yield 'C1 quote in unquoted value' => ['<a title=x\'><b title="\'><script>">' . $f];
+        yield 'C2 quote in unquoted' => ['<iframe title=a"src=x" src="https://youtube.com/x"></iframe>'];
+        yield 'C2 lt in unquoted' => ['<iframe title=a<src=x src="https://youtube.com/x"></iframe>'];
+        yield 'C2 equals in unquoted' => ['<iframe title=a=src=x src="https://youtube.com/x"></iframe>'];
+        yield 'C3 entity tab' => ['<iframe src="https://you&Tab;tube.com/x"></iframe>'];
+        yield 'C3 literal newline' => ["<iframe src=\"https://you\ntube.com/x\"></iframe>"];
+        yield 'C3 entity without semicolon' => ['<iframe src="https://&#121outube.com/x"></iframe>'];
+        yield 'C3 backslashes' => ['<iframe src="https:\\\\youtube.com\\x"></iframe>'];
+        yield 'C3 slash backslash' => ['<iframe src="/\\youtube.com/x"></iframe>'];
+        yield 'C3 triple slash' => ['<iframe src="https:///youtube.com/x"></iframe>'];
+        yield 'C3 percent host' => ['<iframe src="https://%79outube.com/x"></iframe>'];
+        yield 'C3 fullwidth' => ['<iframe src="https://ｙoutube.com/x"></iframe>'];
+        yield 'C3 leading controls' => ["<iframe src=\" \x01https://youtube.com/x\"></iframe>"];
+        yield 'C3 port and userinfo' => ['<iframe src="https://user:pw@youtube.com:443/x"></iframe>'];
+        yield 'C3 trailing dots' => ['<iframe src="https://youtube.com../x"></iframe>'];
+        yield 'I2 close tag in comment' => ['<iframe src="https://youtube.com/x"><!-- </iframe> --></iframe>hello'];
+    }
+
+    #[DataProvider('attacks')]
+    public function testAttackInputsNeverLeaveAMatchedIframeLive(string $html): void
+    {
+        $out = $this->rewrite($html);
+
+        $this->assertStringContainsString('data-cmk-embed="marketing"', $out);
+        $this->assertNoLiveMatch($out);
+    }
+
+    public function testALiteralIframeInsideAnAttributeIsNotRewrittenAndRealContentSurvives(): void
+    {
+        $html = '<div title="<iframe src=https://youtube.com/x>">hello</div><iframe src="https://example.org/"></iframe>';
+        $out = $this->rewrite($html);
+
+        $this->assertSame($html, $out);
+    }
+
+    public function testIFramesAroundAnAttributeOnlyLookalikeKeepTheirNeighbours(): void
+    {
+        $out = $this->rewrite('<div title="<iframe src=https://youtube.com/x>">hello</div><iframe src="https://youtube.com/y"></iframe><p>after</p>');
+
+        $this->assertStringContainsString('hello', $out);
+        $this->assertStringContainsString('<p>after</p>', $out);
+        $this->assertSame(1, substr_count($out, 'data-cmk-embed="'));
+        $this->assertNoLiveMatch($out);
+    }
+
+    public function testLookalikeHostsAreNotRewrittenEvenWhenSmuggled(): void
+    {
+        $html = '<iframe src="https://evilyoutube.com/x"></iframe><iframe src="https://youtube.com.evil.com/x"></iframe><iframe src="https://youtube.com@evil.com/x"></iframe><iframe src="https://evil.com/?u=youtube.com"></iframe>';
+
+        $this->assertSame($html, $this->rewrite($html));
+    }
+
+    public function testAnUnparseableHostThatNamesAServiceIsBlocked(): void
+    {
+        $out = $this->rewrite('<iframe src="https://[youtube.com]/x"></iframe>');
+
+        $this->assertStringContainsString('data-cmk-embed="marketing"', $out);
+    }
+
+    public function testPagesWithOnlyUnmatchedIframesAreByteIdenticalEvenWithWeirdMarkup(): void
+    {
+        $html = "<p>unclosed<div><IFRAME src=\"https://example.org/\"></IFRAME><b><i></b></i><!-- x --><table><td>\xC3\xA9";
+
+        $this->assertSame($html, $this->rewrite($html));
+    }
+
+    public function testRewritingTheOutputAgainChangesNothing(): void
+    {
+        $once = $this->rewrite('<p>Hi</p><iframe src="https://youtube.com/x" width="10"></iframe>');
+
+        $this->assertSame($once, $this->rewrite($once));
+    }
+
+    public function testHostIsReadLikeABrowserReadsIt(): void
+    {
+        $this->assertSame('youtube.com', EmbedRewriter::host("  https://You\tTube.com:8080/x"));
+        $this->assertNull(EmbedRewriter::host('https://exa mple.com/'));
     }
 }

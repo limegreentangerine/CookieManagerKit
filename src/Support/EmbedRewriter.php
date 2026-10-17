@@ -3,153 +3,215 @@
 namespace CookieManagerKit\Support;
 
 /**
- * Pure: blocks iframes that belong to a known service until the visitor consents to its category. A matched iframe
- * becomes a placeholder (message, accept button, preferences button) next to an iframe whose `src` has moved to
+ * Blocks iframes that belong to a known service until the visitor consents to its category. A matched iframe
+ * becomes a placeholder (message, accept button, preferences button) next to a fresh iframe whose `src` has moved to
  * `data-cmk-src`; the loader restores it in the browser. The output does not depend on the visitor.
  *
- * Fails closed: a matched iframe that cannot be rewritten safely is removed, and a regex failure removes every
- * iframe tag from the page rather than leaving one live.
+ * The page is read with PHP's spec-compliant HTML5 parser, so what counts as an iframe is what a browser would see.
+ * Fails closed: an iframe that cannot be rewritten is removed, and a parse failure removes every iframe tag.
  */
 final class EmbedRewriter
 {
-    /** Regions where an `<iframe` is text, not an element. Unterminated ones run to the end, as a browser reads them. */
-    private const MASKED = '#<!--.*?(?:-->|\z)|<(script|style|template|noscript)(?=[\s/>])(?:[^>"\']++|"[^"]*+"|\'[^\']*+\')*+>.*?(?:</\1\s*>|\z)|(<[a-z][^\s/>]*+(?:[^>"\']++|"[^"]*+"|\'[^\']*+\')*+>)#is';
-    /** The second alternative catches a tag whose quotes never close; one() removes it if it names a known service. */
-    private const IFRAME = '#<iframe(?=[\s/>])(?:((?:[^>"\']++|"[^"]*+"|\'[^\']*+\')*+)>(?:.*?</iframe\s*>)?|[^>]*+>?)#is';
-    private const ATTRIBUTE = '#([^\s"\'<>/=]++)(?:\s*+=\s*+(?:"([^"]*+)"|\'([^\']*+)\'|([^\s"\'=<>`]++)))?#';
-
     /**
      * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
      * @param array{message: string, accept: string, customise: string}                                 $text
      */
-    private static function one(string $whole, ?string $attributeText, array $services, array $text, callable $onError): string
+    private static function one(\Dom\HTMLDocument $doc, \Dom\Element $iframe, array $services, array $text, callable $onError): bool
     {
         try {
-            if ($attributeText === null) {
-                return self::names($whole, $services) ? self::drop($onError) : $whole;
+            if ($iframe->hasAttribute('srcdoc') || !$iframe->hasAttribute('src')) {
+                return false;
             }
 
-            $attributes = self::attributes($attributeText);
-            $source = $attributes['src'] ?? null;
+            $parsed = self::parse((string) $iframe->getAttribute('src'));
 
-            if ($source === null || isset($attributes['srcdoc'])) {
-                return $whole;
+            if ($parsed === null) {
+                return false;
             }
 
-            $source = trim($source);
-            $source = str_starts_with($source, '//') ? 'https:' . $source : $source;
-            $url = Output::safeUrl($source);
-            $service = $url === '' ? null : self::match($url, $services);
+            $service = $parsed['host'] !== null ? self::match($parsed['url'], $services) : self::named($parsed['authority'], $services);
 
             if ($service === null || !Text::isHandle($service['category'])) {
-                return $whole;
+                return false;
             }
-
-            if (preg_match('#</iframe\s*+>\z#i', $whole) !== 1) {
-                return self::drop($onError, 'An unterminated iframe was removed.');
-            }
-
-            return self::placeholder($attributes, $url, $service, $text);
         } catch (\Throwable $e) {
             self::report($onError, $e);
 
-            return '';
+            return self::remove($iframe, $onError);
         }
+
+        try {
+            $iframe->replaceWith(self::placeholder($doc, $iframe, $parsed['url'], $service, $text));
+        } catch (\Throwable $e) {
+            self::report($onError, $e);
+            self::remove($iframe, $onError);
+        }
+
+        return true;
     }
 
-    /**
-     * @param array<string, string>                                                               $attributes
-     * @param array{name: string, category: string, categoryTitle: string, domains: list<string>} $service
-     * @param array{message: string, accept: string, customise: string}                           $text
-     */
-    private static function placeholder(array $attributes, string $url, array $service, array $text): string
+    private static function remove(\Dom\Element $iframe, callable $onError): bool
     {
-        $kept = '';
-
-        foreach ($attributes as $name => $value) {
-            if ($name === 'src' || str_starts_with($name, 'data-cmk-') || preg_match('/^[a-z][a-z0-9_:-]{0,63}\z/', $name) !== 1) {
-                continue;
-            }
-
-            $kept .= ' ' . $name . '="' . Output::e($value) . '"';
+        try {
+            $iframe->remove();
+        } catch (\Throwable $e) {
+            self::report($onError, $e);
         }
 
-        $style = '';
-
-        if (preg_match('/^(\d{1,4})(px)?\z/', $attributes['width'] ?? '', $width) === 1) {
-            $style .= 'width:' . $width[1] . 'px;';
-        }
-
-        if (preg_match('/^(\d{1,4})(px)?\z/', $attributes['height'] ?? '', $height) === 1) {
-            $style .= 'min-height:' . $height[1] . 'px;';
-        }
-
-        $replace = ['{service}' => $service['name'], '{category}' => $service['categoryTitle']];
-        $category = Output::e($service['category']);
-
-        return '<span class="cmk-embed" data-cmk-embed="' . $category . '"' . ($style === '' ? '' : ' style="' . Output::e($style) . '"') . '>'
-            . '<span class="cmk-embed__box" data-cmk-embed-placeholder>'
-            . '<span class="cmk-embed__message">' . Output::e(strtr($text['message'], $replace)) . '</span>'
-            . '<span class="cmk-embed__actions">'
-            . '<button type="button" class="cmk-embed__accept" data-cmk-embed-accept="' . $category . '">' . Output::e(strtr($text['accept'], $replace)) . '</button> '
-            . '<button type="button" class="cmk-embed__prefs" data-cmk-open>' . Output::e($text['customise']) . '</button>'
-            . '</span></span>'
-            . '<iframe' . $kept . ' data-cmk-src="' . Output::e($url) . '"></iframe>'
-            . '</span>';
+        return true;
     }
 
     /**
-     * Attribute names are lower-cased and the first of a duplicate wins, as a browser reads them.
+     * Reads a URL the way a browser does before a request: strips surrounding controls and every tab and newline,
+     * turns backslashes into slashes, treats a scheme-relative start as https, and ignores userinfo and port. Only
+     * http(s) is returned. `host` is null when the host cannot be validated; `authority` is then the raw section.
      *
-     * @return array<string, string>
+     * @return array{url: string, authority: string, host: string|null}|null
      */
-    private static function attributes(string $text): array
+    private static function parse(string $url): ?array
     {
-        $out = [];
+        $url = trim($url, "\x00..\x20");
+        $url = str_replace(["\t", "\r", "\n", '\\'], ['', '', '', '/'], $url);
 
-        preg_match_all(self::ATTRIBUTE, $text, $matches, PREG_SET_ORDER);
-
-        foreach ($matches as $match) {
-            $name = strtolower($match[1]);
-
-            if (isset($out[$name])) {
-                continue;
-            }
-
-            $value = ($match[2] ?? '') !== '' ? $match[2] : (($match[3] ?? '') !== '' ? $match[3] : ($match[4] ?? ''));
-            $out[$name] = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if (str_starts_with($url, '//')) {
+            $url = 'https:' . $url;
         }
 
-        return $out;
+        if (preg_match('#^(https?):/*+(.*+)\z#is', $url, $m) !== 1) {
+            return null;
+        }
+
+        $scheme = strtolower($m[1]);
+        $rest = $m[2];
+        $authority = $rest;
+        $end = strcspn($rest, '/?#');
+        $authority = substr($rest, 0, $end);
+        $afterAuthority = substr($rest, $end);
+        $at = strrpos($authority, '@');
+        $hostPart = $at === false ? $authority : substr($authority, $at + 1);
+
+        if (str_starts_with($hostPart, '[')) {
+            $host = null;
+        } else {
+            $hostPart = (string) preg_replace('/:\d*+\z/', '', $hostPart);
+            $host = self::cleanHost($hostPart);
+        }
+
+        return [
+            'url' => $scheme . '://' . $rest,
+            'authority' => $host === null ? $authority . $afterAuthority : $authority,
+            'host' => $host,
+        ];
+    }
+
+    private static function cleanHost(string $host): ?string
+    {
+        $host = rtrim(strtolower(rawurldecode($host)), '.');
+
+        if ($host === '') {
+            return null;
+        }
+
+        if (preg_match('/^[a-z0-9.-]+\z/', $host) !== 1) {
+            if (!function_exists('idn_to_ascii')) {
+                return null;
+            }
+
+            $ascii = idn_to_ascii($host, IDNA_NONTRANSITIONAL_TO_ASCII | IDNA_CHECK_BIDI | IDNA_CHECK_CONTEXTJ, INTL_IDNA_VARIANT_UTS46);
+            $host = is_string($ascii) ? rtrim(strtolower($ascii), '.') : '';
+        }
+
+        return preg_match('/^[a-z0-9.-]+\z/', $host) === 1 ? $host : null;
     }
 
     /**
-     * Whether the text of a tag that could not be parsed mentions any known domain, however it is entity-encoded.
+     * Backstop for an http(s) URL whose host could not be validated: the first service whose domain appears in it.
      *
      * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
+     *
+     * @return array{name: string, category: string, categoryTitle: string, domains: list<string>}|null
      */
-    private static function names(string $text, array $services): bool
+    private static function named(string $text, array $services): ?array
     {
-        $text = strtolower(html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $text = strtolower(rawurldecode($text));
 
         foreach ($services as $service) {
             foreach ($service['domains'] as $domain) {
-                $base = strtolower(str_starts_with($domain, '*.') ? substr($domain, 2) : $domain);
+                $base = self::base($domain);
 
                 if ($base !== '' && str_contains($text, $base)) {
-                    return true;
+                    return $service;
                 }
             }
         }
 
-        return false;
+        return null;
     }
 
-    private static function drop(callable $onError, string $message = 'An iframe that could not be parsed was removed.'): string
+    private static function base(string $domain): string
     {
-        self::report($onError, new \RuntimeException($message));
+        return strtolower(str_starts_with($domain, '*.') ? substr($domain, 2) : $domain);
+    }
 
-        return '';
+    /**
+     * @param array{name: string, category: string, categoryTitle: string, domains: list<string>} $service
+     * @param array{message: string, accept: string, customise: string}                           $text
+     */
+    private static function placeholder(\Dom\HTMLDocument $doc, \Dom\Element $original, string $url, array $service, array $text): \Dom\Element
+    {
+        $replace = ['{service}' => $service['name'], '{category}' => $service['categoryTitle']];
+
+        $element = static function (string $tag, array $attributes, ?string $content = null) use ($doc): \Dom\Element {
+            $node = $doc->createElement($tag);
+
+            foreach ($attributes as $name => $value) {
+                $node->setAttribute($name, $value);
+            }
+
+            if ($content !== null) {
+                $node->textContent = $content;
+            }
+
+            return $node;
+        };
+
+        $frame = $doc->createElement('iframe');
+
+        foreach ($original->attributes as $attribute) {
+            $name = $attribute->name;
+
+            if (in_array($name, ['src', 'srcdoc'], true) || str_starts_with($name, 'data-cmk-') || preg_match('/^[a-z][a-z0-9_:-]{0,63}\z/', $name) !== 1) {
+                continue;
+            }
+
+            $frame->setAttribute($name, $attribute->value);
+        }
+
+        $frame->setAttribute('data-cmk-src', $url);
+
+        $style = '';
+
+        if (preg_match('/^(\d{1,4})(px)?\z/', (string) $original->getAttribute('width'), $width) === 1) {
+            $style .= 'width:' . $width[1] . 'px;';
+        }
+
+        if (preg_match('/^(\d{1,4})(px)?\z/', (string) $original->getAttribute('height'), $height) === 1) {
+            $style .= 'min-height:' . $height[1] . 'px;';
+        }
+
+        $wrapper = $element('span', ['class' => 'cmk-embed', 'data-cmk-embed' => $service['category']] + ($style === '' ? [] : ['style' => $style]));
+        $box = $element('span', ['class' => 'cmk-embed__box', 'data-cmk-embed-placeholder' => '']);
+        $actions = $element('span', ['class' => 'cmk-embed__actions']);
+
+        $box->appendChild($element('span', ['class' => 'cmk-embed__message'], strtr($text['message'], $replace)));
+        $actions->appendChild($element('button', ['type' => 'button', 'class' => 'cmk-embed__accept', 'data-cmk-embed-accept' => $service['category']], strtr($text['accept'], $replace)));
+        $actions->appendChild($doc->createTextNode(' '));
+        $actions->appendChild($element('button', ['type' => 'button', 'class' => 'cmk-embed__prefs', 'data-cmk-open' => ''], $text['customise']));
+        $box->appendChild($actions);
+        $wrapper->appendChild($box);
+        $wrapper->appendChild($frame);
+
+        return $wrapper;
     }
 
     private static function report(callable $onError, \Throwable $error): void
@@ -159,7 +221,6 @@ final class EmbedRewriter
         } catch (\Throwable) {
         }
     }
-
     /**
      * @param list<array{name: string, category: string, categoryTitle: string, domains: list<string>}> $services
      * @param array{message: string, accept: string, customise: string}                                 $text
@@ -171,53 +232,36 @@ final class EmbedRewriter
             return $html;
         }
 
-        $token = 'cmk' . bin2hex(random_bytes(8));
-        $masks = [];
-        $masked = preg_replace_callback(self::MASKED, static function (array $found) use (&$masks, $token): string {
-            // Ordinary tags are only consumed so that a "<script>" inside an attribute value is not read as an element.
-            if (isset($found[2])) {
-                return $found[0];
+        try {
+            $doc = \Dom\HTMLDocument::createFromString($html, LIBXML_NOERROR, 'UTF-8');
+            $changed = false;
+
+            foreach (iterator_to_array($doc->querySelectorAll('iframe'), false) as $iframe) {
+                $changed = self::one($doc, $iframe, $services, $text, $onError) || $changed;
             }
 
-            $key = '<!--' . $token . count($masks) . '-->';
-            $masks[$key] = $found[0];
+            return $changed ? $doc->saveHtml() : $html;
+        } catch (\Throwable $e) {
+            self::report($onError, $e);
 
-            return $key;
-        }, $html);
-
-        $done = $masked === null ? null : preg_replace_callback(
-            self::IFRAME,
-            static fn(array $found): string => self::one($found[0], $found[1] ?? null, $services, $text, $onError),
-            $masked,
-        );
-
-        if ($done === null) {
-            self::report($onError, new \RuntimeException('Embed rewriting failed; iframes were removed from the page.'));
-
-            return (string) preg_replace('#</?iframe(?=[\s/>])[^>]*+>#i', '', $html);
+            return self::failClosed($html);
         }
-
-        return $masks === [] ? $done : strtr($done, $masks);
     }
 
     /**
-     * The lower-case host of an http(s) URL, or null.
+     * Removes every iframe tag. Used when the page cannot be parsed.
+     */
+    public static function failClosed(string $html): string
+    {
+        return preg_replace('#</?iframe(?=[\s/>])[^>]*+>?#i', '', $html) ?? '';
+    }
+
+    /**
+     * The lower-case ASCII host of an http(s) URL, read the way a browser reads it, or null.
      */
     public static function host(string $url): ?string
     {
-        if (preg_match('#^https?://#i', $url) !== 1) {
-            return null;
-        }
-
-        $host = parse_url($url, PHP_URL_HOST);
-
-        if (!is_string($host)) {
-            return null;
-        }
-
-        $host = rtrim(strtolower($host), '.');
-
-        return preg_match('/^[a-z0-9.-]+\z/', $host) === 1 ? $host : null;
+        return self::parse($url)['host'] ?? null;
     }
 
     /**
@@ -235,7 +279,7 @@ final class EmbedRewriter
 
         foreach ($services as $service) {
             foreach ($service['domains'] as $domain) {
-                $base = str_starts_with($domain, '*.') ? substr($domain, 2) : $domain;
+                $base = self::base($domain);
 
                 if ($base !== '' && ($host === $base || str_ends_with($host, '.' . $base))) {
                     return $service;
