@@ -99,7 +99,7 @@ foreach ($locales as $locale => $label) {
         <div class="form-check mb-3">
             <input type="checkbox" class="form-check-input" id="consentMode" name="consentMode" value="1" <?php echo O::e($settings->isConsentModeEnabled() ? 'checked' : '') ?>>
             <label class="form-check-label" for="consentMode"><?php echo t('Send Google Consent Mode v2 signals') ?></label>
-            <div class="help-block form-text"><?php echo t('Starts every signal denied, then updates ad_storage, ad_user_data, ad_personalization, analytics_storage, functionality_storage, personalization_storage and security_storage from the visitor\'s choice. Scripts are still blocked by category as before.') ?></div>
+            <div class="help-block form-text"><?php echo t('Starts every signal denied except security_storage (always granted), then updates ad_storage, ad_user_data, ad_personalization, analytics_storage, functionality_storage and personalization_storage from the visitor\'s choice. Scripts are still blocked by category as before.') ?></div>
         </div>
 
         <div class="form-group mb-3">
