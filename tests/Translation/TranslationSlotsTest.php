@@ -10,7 +10,10 @@ use CookieManagerKit\Entity\Service;
 use CookieManagerKit\Entity\Category;
 use Doctrine\ORM\EntityManagerInterface;
 use CookieManagerKit\Entity\BannerContent;
+use CookieManagerKit\Entity\CookieContent;
 use Doctrine\Persistence\ObjectRepository;
+use CookieManagerKit\Entity\ServiceContent;
+use CookieManagerKit\Entity\CategoryContent;
 use PHPUnit\Framework\MockObject\MockObject;
 use CookieManagerKit\Translation\TranslationSlots;
 
@@ -102,13 +105,66 @@ final class TranslationSlotsTest extends TestCase
 
         foreach (['banner||title', 'category|analytics|title', 'service|7|description', 'cookie|9|purpose'] as $key) {
             $slot = self::slot($slots, $key);
-            $this->assertSame('', $slot->read('fr_FR'));
             $slot->write('fr_FR', '<b>Bonjour</b>');
             $this->assertSame('Bonjour', $slot->read('fr_FR'), $key);
         }
 
-        $this->assertInstanceOf(BannerContent::class, $this->persisted[0]);
-        $this->assertCount(4, $this->persisted);
+        $classes = array_map(static fn(object $e): string => $e::class, $this->persisted);
+        sort($classes);
+        $expected = [BannerContent::class, CategoryContent::class, CookieContent::class, ServiceContent::class];
+        sort($expected);
+        $this->assertSame($expected, $classes);
+    }
+
+    public function testBannerSlotsShareOneNewLocaleRow(): void
+    {
+        $slots = TranslationSlots::collect($this->em([(new BannerContent())->setLocale('en_GB')], [], []));
+
+        self::slot($slots, 'banner||title')->write('fr_FR', 'Titre');
+        self::slot($slots, 'banner||body')->write('fr_FR', 'Corps');
+
+        $created = array_values(array_unique(array_filter($this->persisted, static fn(object $e): bool => $e instanceof BannerContent && $e->getLocale() === 'fr_FR'), SORT_REGULAR));
+        $this->assertCount(1, $created);
+        $this->assertSame('Titre', self::slot($slots, 'banner||title')->read('fr_FR'));
+        $this->assertSame('Corps', self::slot($slots, 'banner||body')->read('fr_FR'));
+    }
+
+    public function testUnsavedServicesAndCookiesGetNoSlots(): void
+    {
+        $category = (new Category())->setHandle('analytics');
+        $service = (new Service())->setName('New')->setCategory($category);
+        $service->getCookies()->add((new Cookie())->setName('x')->setService($service));
+
+        $keys = array_map(static fn($s) => $s->key, TranslationSlots::collect($this->em([], [$category], [$service])));
+
+        $this->assertSame(['category|analytics|title', 'category|analytics|description'], array_slice($keys, 10));
+    }
+
+    public function testBlankWritesNeverCreateARow(): void
+    {
+        [$category, $service, $cookie] = $this->fixtures();
+        $slots = TranslationSlots::collect($this->em([], [$category], [$service]));
+
+        foreach (['banner||title', 'category|analytics|title', 'category|analytics|description', 'service|7|description', 'cookie|9|purpose'] as $key) {
+            self::slot($slots, $key)->write('fr_FR', "  \n");
+            $this->assertSame('', self::slot($slots, $key)->read('fr_FR'), $key);
+        }
+
+        $this->assertSame([], $this->persisted);
+        $this->assertNull($category->getContent('fr_FR'));
+        $this->assertNull($service->getContent('fr_FR'));
+        $this->assertNull($cookie->getContent('fr_FR'));
+    }
+
+    public function testBlankWriteToAnExistingRowClearsIt(): void
+    {
+        [$category, $service] = $this->fixtures();
+        $slots = TranslationSlots::collect($this->em([], [$category], [$service]));
+        $slot = self::slot($slots, 'service|7|description');
+        $slot->write('fr_FR', 'Texte');
+        $slot->write('fr_FR', '');
+
+        $this->assertSame('', $slot->read('fr_FR'));
     }
 
     public function testCategoryTitleAndDescriptionWritesDoNotEraseEachOther(): void
