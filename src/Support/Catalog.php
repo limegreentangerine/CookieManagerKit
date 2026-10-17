@@ -14,7 +14,7 @@ use CookieManagerKit\Entity\{BannerContent, Category, Settings};
  */
 final class Catalog
 {
-    private const KEY = 'cookie_manager_kit/snapshot/v2';
+    private const KEY = 'cookie_manager_kit/snapshot/v3';
     private const LIFETIME = 43200;
 
     /** Built-in English text, used when an admin has not provided a value. */
@@ -73,7 +73,25 @@ final class Catalog
                     $descriptions[$row->getLocale()] = $row->getDescription();
                 }
 
-                $services[] = ['name' => $service->getName(), 'vendor' => $service->getVendor(), 'content' => $descriptions];
+                $cookies = [];
+
+                foreach ($service->getCookies() as $cookie) {
+                    $purposes = [];
+
+                    foreach ($cookie->getContents() as $row) {
+                        $purposes[$row->getLocale()] = $row->getPurpose();
+                    }
+
+                    $cookies[] = ['name' => $cookie->getName(), 'days' => $cookie->getDurationDays(), 'content' => $purposes];
+                }
+
+                $services[] = [
+                    'name' => $service->getName(),
+                    'vendor' => $service->getVendor(),
+                    'content' => $descriptions,
+                    'domains' => $service->getDomains(),
+                    'cookies' => $cookies,
+                ];
             }
 
             $categories[] = [
