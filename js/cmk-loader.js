@@ -1,7 +1,7 @@
 /*
  * Cookie Manager loader. Inlined into <head> on every page, so it has no dependencies and stays small.
- * It reads the consent cookie, activates inert scripts for the categories the visitor consented to, and is the
- * only code that reads or writes the cookie.
+ * It reads the consent cookie, activates inert scripts and blocked embeds (iframes the server left without a src)
+ * for the categories the visitor consented to, and is the only code that reads or writes the cookie.
  *
  * Reads window.cmkBoot: { v: policy version, cats: [known category handles], days: cookie lifetime }.
  */
@@ -309,6 +309,41 @@
 
 			live.text = inert.text;
 			inert.parentNode.insertBefore(live, inert.nextSibling);
+		}
+
+		/*
+		 * Blocked embeds: the server leaves the iframe without a src, with data-cmk-embed (category) and
+		 * data-cmk-src. `granted` only holds known handles, so an unknown category never matches. A fail-closed
+		 * srcdoc iframe carries no data-cmk-* and is never touched here.
+		 */
+		var frames = d.querySelectorAll('iframe[data-cmk-embed][data-cmk-src]');
+
+		for (var f = 0; f < frames.length; f++) {
+			var frame = frames[f];
+			var source = frame.getAttribute('data-cmk-src');
+
+			if (
+				frame.hasAttribute('data-cmk-done') ||
+				granted.indexOf(frame.getAttribute('data-cmk-embed')) === -1 ||
+				!/^https?:\/\//i.test(source)
+			) {
+				continue;
+			}
+
+			frame.setAttribute('data-cmk-done', '1');
+			frame.setAttribute('src', source);
+			frame.removeAttribute('data-cmk-src');
+
+			var wrapper = frame.parentNode;
+
+			if (wrapper && wrapper.classList && wrapper.classList.contains('cmk-embed')) {
+				for (var c = wrapper.firstChild; c; c = c.nextSibling) {
+					if (c.nodeType === 1 && c.hasAttribute('data-cmk-embed-placeholder')) {
+						wrapper.removeChild(c);
+						break;
+					}
+				}
+			}
 		}
 	}
 

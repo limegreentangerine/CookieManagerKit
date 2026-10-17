@@ -538,9 +538,37 @@
 		d.body.appendChild(state.widget);
 	}
 
+	function acceptEmbed(handle) {
+		var known = validCategories(state.config).map(function (category) {
+			return category.handle;
+		});
+
+		if (!HANDLE.test(handle) || known.indexOf(handle) === -1) {
+			return;
+		}
+
+		var stored = cmk.get();
+		var granted = (stored ? stored.c : cmk.initial()).slice();
+
+		if (granted.indexOf(handle) === -1) {
+			granted.push(handle);
+		}
+
+		commit(granted);
+	}
+
 	function onClick(event) {
-		var node =
-			event.target && event.target.closest ? event.target.closest('[data-cmk-open]') : null;
+		var target = event.target && event.target.closest ? event.target : null;
+		var accept = target ? target.closest('[data-cmk-embed-accept]') : null;
+
+		if (accept) {
+			event.preventDefault();
+			acceptEmbed(accept.getAttribute('data-cmk-embed-accept'));
+
+			return;
+		}
+
+		var node = target ? target.closest('[data-cmk-open]') : null;
 
 		if (node) {
 			event.preventDefault();

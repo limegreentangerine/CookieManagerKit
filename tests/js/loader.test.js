@@ -843,3 +843,115 @@ describe('opt-out and a stored choice from an older policy version', () => {
 		expect(calls[0][1]).toBe('default');
 	});
 });
+
+describe('embeds', () => {
+	const URL = 'https://www.youtube.com/embed/x';
+	const WRAPPED = (category = 'marketing', src = URL) =>
+		`<span class="cmk-embed" style="display:block"><span class="cmk-embed__box" data-cmk-embed-placeholder>blocked <button type="button" class="cmk-embed__accept" data-cmk-embed-accept="${category}">Accept</button> <button type="button" class="cmk-embed__prefs" data-cmk-open>Prefs</button></span><iframe data-cmk-embed=${category} data-cmk-src="${src}"></iframe></span>`;
+	const BARE = (category = 'marketing', src = URL) =>
+		`<iframe data-cmk-embed="${category}" data-cmk-src="${src}"></iframe>`;
+	const frame = () => document.querySelector('iframe');
+	const placeholder = () => document.querySelector('[data-cmk-embed-placeholder]');
+
+	it('keeps the iframe unloaded and the placeholder shown without consent', () => {
+		document.body.innerHTML = WRAPPED();
+		start();
+
+		expect(frame().hasAttribute('src')).toBe(false);
+		expect(frame().getAttribute('data-cmk-src')).toBe(URL);
+		expect(placeholder()).not.toBeNull();
+	});
+
+	it('loads the iframe and removes only the placeholder once its category is consented', () => {
+		document.body.innerHTML = WRAPPED();
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+
+		expect(frame().getAttribute('src')).toBe(URL);
+		expect(frame().hasAttribute('data-cmk-src')).toBe(false);
+		expect(placeholder()).toBeNull();
+		expect(frame().parentNode.className).toBe('cmk-embed');
+		expect(frame().parentNode.children.length).toBe(1);
+	});
+
+	it('loads a bare iframe that has no wrapper or placeholder', () => {
+		document.body.innerHTML = '<p data-cmk-embed-placeholder>keep me</p>' + BARE();
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+
+		expect(frame().getAttribute('src')).toBe(URL);
+		expect(frame().hasAttribute('data-cmk-src')).toBe(false);
+		expect(placeholder()).not.toBeNull();
+	});
+
+	it('does not remove a placeholder outside a cmk-embed wrapper', () => {
+		document.body.innerHTML = '<div><span data-cmk-embed-placeholder>x</span><iframe data-cmk-embed=marketing data-cmk-src="' + URL + '"></iframe></div>';
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+
+		expect(frame().getAttribute('src')).toBe(URL);
+		expect(placeholder()).not.toBeNull();
+	});
+
+	it('leaves a fail-closed srcdoc iframe untouched', () => {
+		document.body.innerHTML = '<iframe srcdoc></iframe>';
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+
+		expect(frame().hasAttribute('src')).toBe(false);
+		expect(frame().hasAttribute('srcdoc')).toBe(true);
+		expect(frame().hasAttribute('data-cmk-done')).toBe(false);
+	});
+
+	it('does not load an embed of a category that was not consented', () => {
+		document.body.innerHTML = WRAPPED('marketing');
+		setConsent(valid(['necessary', 'analytics']));
+		start();
+
+		expect(frame().hasAttribute('src')).toBe(false);
+		expect(placeholder()).not.toBeNull();
+	});
+
+	it.each(['javascript:alert(1)', 'data:text/html,hi', '//evil.example/x', '/local', ''])('refuses the source %j', (src) => {
+		document.body.innerHTML = WRAPPED('marketing', src) + BARE('marketing', src);
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+
+		document.querySelectorAll('iframe').forEach((f) => expect(f.hasAttribute('src')).toBe(false));
+		expect(placeholder()).not.toBeNull();
+	});
+
+	it('loads straight away in the opt-out model', () => {
+		document.body.innerHTML = WRAPPED();
+		start({ ...BOOT, model: 'opt_out' });
+
+		expect(frame().getAttribute('src')).toBe(URL);
+	});
+
+	it('does not load for a category the page does not know about', () => {
+		document.body.innerHTML = BARE('Bad Handle!') + BARE('nonsense');
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+
+		document.querySelectorAll('iframe').forEach((f) => expect(f.hasAttribute('src')).toBe(false));
+	});
+
+	it('loads the embed after save() grants its category', () => {
+		document.body.innerHTML = WRAPPED();
+		start();
+		window.cmk.save(['marketing']);
+
+		expect(frame().getAttribute('src')).toBe(URL);
+		expect(placeholder()).toBeNull();
+	});
+
+	it('does not touch a frame twice', () => {
+		document.body.innerHTML = WRAPPED();
+		setConsent(valid(['necessary', 'marketing']));
+		start();
+		frame().setAttribute('src', 'https://changed.example/');
+		window.cmk.activate();
+
+		expect(frame().getAttribute('src')).toBe('https://changed.example/');
+	});
+});
