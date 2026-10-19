@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace CookieManagerKit\Tests\Support;
 
 use PHPUnit\Framework\TestCase;
-use CookieManagerKit\Entity\{Settings};
+use CookieManagerKit\Entity\Settings;
 use Doctrine\ORM\EntityManagerInterface;
 use CookieManagerKit\Support\PolicyVersions;
 
