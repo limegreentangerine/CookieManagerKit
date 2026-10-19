@@ -2,6 +2,16 @@
 
 Notable changes to this project are documented here.
 
+## 0.5.1
+
+### Added
+
+- Optional banner icon: choose an image from the file manager on the Appearance page and it is shown beside the banner heading (and in the preview). Leave it empty for no icon. The image is decorative and carries an empty `alt`.
+
+### Upgrade notes
+
+- Run **Update** for the package in the dashboard to add the new `iconFileId` column to the settings table.
+
 ## 0.5.0
 
 Phase 4: cookie declaration, embed placeholders and translation assist.

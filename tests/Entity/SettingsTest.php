@@ -9,6 +9,18 @@ use CookieManagerKit\Entity\Settings;
 
 final class SettingsTest extends TestCase
 {
+    public function testIconFileIdIsOptionalAndSanitised(): void
+    {
+        $settings = new Settings();
+        $this->assertNull($settings->getIconFileId());
+
+        $this->assertSame(42, $settings->setIconFileId('42')->getIconFileId());
+        $this->assertNull($settings->setIconFileId('')->getIconFileId());
+        $this->assertNull($settings->setIconFileId('abc')->getIconFileId());
+        $this->assertNull($settings->setIconFileId(-3)->getIconFileId());
+        $this->assertNull($settings->setIconFileId(null)->getIconFileId());
+    }
+
     public function testDefaults(): void
     {
         $settings = new Settings();

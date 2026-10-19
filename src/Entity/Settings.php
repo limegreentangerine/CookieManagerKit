@@ -51,6 +51,11 @@ class Settings extends UpdatedGuidEntity
     protected $shadow = true;
 
     /**
+     * @ORM\Column(type="integer", nullable=true, options={"comment": "File manager image shown next to the banner title"})
+     */
+    protected $iconFileId;
+
+    /**
      * @ORM\Column(type="boolean", nullable=false, options={"default": true, "comment": "Show the floating cookie settings button"})
      */
     protected $widgetEnabled = true;
@@ -208,6 +213,18 @@ class Settings extends UpdatedGuidEntity
     public function setShadow($value): self
     {
         $this->shadow = (bool) $value;
+
+        return $this;
+    }
+
+    public function getIconFileId(): ?int
+    {
+        return $this->iconFileId ? (int) $this->iconFileId : null;
+    }
+
+    public function setIconFileId($value): self
+    {
+        $this->iconFileId = is_numeric($value) && (int) $value > 0 ? (int) $value : null;
 
         return $this;
     }

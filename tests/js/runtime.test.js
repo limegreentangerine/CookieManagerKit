@@ -104,6 +104,19 @@ describe('showing the banner', () => {
 		expect(root().dataset.shadow).toBe('off');
 	});
 
+	it('shows the icon beside the heading only for a safe image url', () => {
+		mount(config({ style: { ...config().style, iconUrl: '/application/files/1/icon.png' } }));
+		const icon = root().querySelector('.cmk__header > img.cmk__icon');
+		expect(icon.getAttribute('src')).toBe('/application/files/1/icon.png');
+		expect(icon.getAttribute('alt')).toBe('');
+		expect(icon.nextElementSibling.id).toBe('cmk-title');
+	});
+
+	it('renders no icon when the url is missing or unsafe', () => {
+		mount(config({ style: { ...config().style, iconUrl: 'javascript:alert(1)' } }));
+		expect(root().querySelector('.cmk__icon')).toBeNull();
+	});
+
 	it('falls back to defaults for hostile style values and ignores invalid colours', () => {
 		mount(config({ style: { position: '"><img src=x onerror=alert(1)>', layout: 'x', font: 'url(x)', radius: 9999, shadow: true, tokens: { bg: 'red;}</style><script>alert(1)</script>', fg: '#222222', accent: 5, buttonBg: null, buttonFg: '#abcdef' } } }));
 

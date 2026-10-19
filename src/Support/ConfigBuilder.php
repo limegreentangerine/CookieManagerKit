@@ -166,6 +166,7 @@ final class ConfigBuilder
                 'tokens' => $tokens,
                 'radius' => StyleRules::radius($settings['radius'] ?? 8),
                 'shadow' => (bool) ($settings['shadow'] ?? true),
+                'iconUrl' => Output::safeUrl(is_string($settings['iconUrl'] ?? null) ? $settings['iconUrl'] : ''),
             ],
             'lifetimeDays' => StyleRules::lifetime($settings['lifetimeDays'] ?? null),
             'consentMode' => (bool) ($settings['consentMode'] ?? false),

@@ -1,7 +1,7 @@
 <?php defined('C5_EXECUTE') or die('Access Denied.');
 
-use CookieManagerKit\Support\Catalog;
 use CookieManagerKit\Support\Output as O;
+use CookieManagerKit\Support\{BannerIcon, Catalog};
 
 /** @var CookieManagerKit\Entity\Settings $settings */
 /** @var CookieManagerKit\Entity\BannerContent|null $banner */
@@ -13,6 +13,7 @@ $body = $text($banner ? $banner->getBody() : '', $defaults['body']);
 $accept = $text($banner ? $banner->getAcceptAllLabel() : '', $defaults['acceptAll']);
 $reject = $text($banner ? $banner->getRejectAllLabel() : '', $defaults['rejectAll']);
 $customise = $text($banner ? $banner->getCustomiseLabel() : '', $defaults['customise']);
+$iconUrl = BannerIcon::url($settings->getIconFileId());
 $tokens = $settings->getTokens();
 $style = '--cmk-bg: ' . $tokens['bg'] . '; --cmk-fg: ' . $tokens['fg'] . '; --cmk-accent: ' . $tokens['accent']
     . '; --cmk-button-bg: ' . $tokens['buttonBg'] . '; --cmk-button-fg: ' . $tokens['buttonFg'] . '; --cmk-radius: ' . $settings->getRadius() . 'px';
@@ -20,7 +21,10 @@ $style = '--cmk-bg: ' . $tokens['bg'] . '; --cmk-fg: ' . $tokens['fg'] . '; --cm
 <div class="cmk-preview-stage">
     <div class="cmk" data-cmk-preview data-position="<?php echo O::e($settings->getPosition()) ?>" data-layout="<?php echo O::e($settings->getLayout()) ?>" data-font="<?php echo O::e($settings->getFont()) ?>" data-shadow="<?php echo O::e($settings->hasShadow() ? 'on' : 'off') ?>" style="<?php echo O::e($style) ?>">
         <div class="cmk__panel">
-            <h2 class="cmk__title"><?php echo O::e($title) ?></h2>
+            <div class="cmk__header">
+                <?php if ($iconUrl !== '') { ?><img class="cmk__icon" src="<?php echo O::e($iconUrl) ?>" alt=""><?php } ?>
+                <h2 class="cmk__title"><?php echo O::e($title) ?></h2>
+            </div>
             <p class="cmk__body">
                 <?php foreach (explode("\n", $body) as $line => $part) { ?>
                     <?php if ($line > 0) { ?><br><?php } ?>

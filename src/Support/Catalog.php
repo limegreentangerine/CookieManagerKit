@@ -119,6 +119,7 @@ final class Catalog
                 'font' => $settings->getFont(),
                 'radius' => $settings->getRadius(),
                 'shadow' => $settings->hasShadow(),
+                'iconUrl' => BannerIcon::url($settings->getIconFileId()),
                 'tokens' => $settings->getTokens(),
             ],
             'banner' => $banner,

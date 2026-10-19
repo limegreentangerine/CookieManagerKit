@@ -79,8 +79,22 @@
 	display: none !important;
 }
 
-.cmk__title {
+.cmk__header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
 	margin: 0 0 8px;
+}
+
+.cmk__icon {
+	flex: none;
+	width: 40px;
+	height: 40px;
+	object-fit: contain;
+}
+
+.cmk__title {
+	margin: 0;
 	font-size: 1.2em;
 	line-height: 1.3;
 	color: inherit !important;

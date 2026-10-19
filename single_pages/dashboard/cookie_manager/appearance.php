@@ -5,6 +5,7 @@ use CookieManagerKit\Support\Output as O;
 
 /** @var CookieManagerKit\Entity\Settings $settings */
 /** @var CookieManagerKit\Entity\BannerContent|null $banner */
+/** @var Concrete\Core\Entity\File\File|null $iconFile */
 
 $positions = [
     'bottom-right' => t('Bottom right'),
@@ -14,6 +15,7 @@ $positions = [
 ];
 $layouts = ['stacked' => t('Buttons stacked'), 'inline' => t('Buttons in a row')];
 $fonts = ['inherit' => t('Use the theme font'), 'system' => t('Use the system font')];
+$fileSelector = app('helper/concrete/file_manager');
 $colours = [
     'tokenBg' => [t('Background'), 'bg'],
     'tokenFg' => [t('Text'), 'fg'],
@@ -55,6 +57,16 @@ $colours = [
                             <option value="<?php echo O::e($value) ?>" <?php echo O::e($settings->getFont() === $value ? 'selected' : '') ?>><?php echo O::e($label) ?></option>
                         <?php } ?>
                     </select>
+                </div>
+            </fieldset>
+
+            <fieldset class="mb-4">
+                <legend><?php echo t('Icon') ?></legend>
+
+                <div class="form-group mb-3">
+                    <label class="form-label" for="iconFileId"><?php echo t('Icon next to the heading') ?></label>
+                    <?php echo $fileSelector->image('cmk-icon', 'iconFileId', t('Choose icon'), $iconFile ?: null) ?>
+                    <div class="form-text"><?php echo t('Optional. An image from the file manager, shown beside the banner heading. Leave empty for no icon.') ?></div>
                 </div>
             </fieldset>
 

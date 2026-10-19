@@ -16,7 +16,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 final class ViewEscapingTest extends TestCase
 {
     private const ENCODER_PREFIXES = ['O::e(', 'O::json(', 'O::url('];
-    private const HELPER_PREFIXES = ['$form->submit(', '$form->select(', '$form->hidden(', '$form->text(', '$form->textarea(', '$form->checkbox(', '$pageSelector->selectPage('];
+    private const HELPER_PREFIXES = ['$form->submit(', '$form->select(', '$form->hidden(', '$form->text(', '$form->textarea(', '$form->checkbox(', '$pageSelector->selectPage(', '$fileSelector->image('];
 
     private const FORBIDDEN_FUNCTIONS = [
         'printf', 'vprintf', 'fprintf', 'vfprintf', 'print_r', 'var_dump', 'var_export', 'debug_zval_dump', 'highlight_string',

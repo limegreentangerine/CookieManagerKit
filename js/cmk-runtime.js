@@ -465,15 +465,19 @@
 		customise.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 
 		var href = safeHref(banner.policyUrl);
+		var iconUrl = safeHref(style.iconUrl);
 
 		root.appendChild(
 			el('div', { class: 'cmk__panel' }, [
-				el('h2', {
-					id: 'cmk-title',
-					class: 'cmk__title',
-					tabindex: '-1',
-					text: text(banner.title, FALLBACK.title)
-				}),
+				el('div', { class: 'cmk__header' }, [
+					iconUrl ? el('img', { class: 'cmk__icon', src: iconUrl, alt: '' }) : null,
+					el('h2', {
+						id: 'cmk-title',
+						class: 'cmk__title',
+						tabindex: '-1',
+						text: text(banner.title, FALLBACK.title)
+					})
+				]),
 				el('p', { id: 'cmk-body', class: 'cmk__body' }, lines(banner.body)),
 				href && banner.policyLinkText
 					? el('a', {

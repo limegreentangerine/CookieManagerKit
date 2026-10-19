@@ -2,10 +2,11 @@
 
 namespace Concrete\Package\CookieManagerKit\Controller\SinglePage\Dashboard\CookieManager;
 
+use Concrete\Core\File\File;
 use CookieManagerKit\Events\ConsentManager;
 use CookieManagerKit\Entity\{BannerContent, Settings};
 use Concrete\Core\Page\Controller\DashboardPageController;
-use CookieManagerKit\Support\{Catalog, SiteLocales, StyleRules};
+use CookieManagerKit\Support\{BannerIcon, Catalog, SiteLocales, StyleRules};
 
 class Appearance extends DashboardPageController
 {
@@ -24,7 +25,11 @@ class Appearance extends DashboardPageController
 
         $banner = $this->entityManager->getRepository(BannerContent::class)->findOneBy(['locale' => SiteLocales::defaultLocale()]);
 
-        $this->set('settings', Settings::get());
+        $settings = Settings::get();
+        $iconId = $settings->getIconFileId();
+
+        $this->set('settings', $settings);
+        $this->set('iconFile', $iconId && BannerIcon::url($iconId) !== '' ? File::getByID($iconId) : null);
         $this->set('banner', $banner instanceof BannerContent ? $banner : null);
     }
 
@@ -70,8 +75,17 @@ class Appearance extends DashboardPageController
             }
         }
 
+        $iconId = $this->post('iconFileId');
+
+        if (is_string($iconId) && $iconId !== '' && $iconId !== '0' && BannerIcon::url((int) $iconId) === '') {
+            $this->flash('error', t('The icon must be an image file from the file manager.'));
+
+            return $this->buildRedirect(self::URL)->send();
+        }
+
         $settings = Settings::get();
-        $settings->setPosition($this->post('position'))
+        $settings->setIconFileId($iconId)
+            ->setPosition($this->post('position'))
             ->setLayout($this->post('layout'))
             ->setFont($this->post('font'))
             ->setRadius($radius)

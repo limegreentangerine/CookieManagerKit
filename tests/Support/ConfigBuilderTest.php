@@ -83,6 +83,18 @@ final class ConfigBuilderTest extends TestCase
         $this->assertSame(12, strlen($config['version']));
     }
 
+    public function testIconUrlIsPassedThroughOnlyWhenSafe(): void
+    {
+        $data = self::data();
+        $this->assertSame('', self::build($data)['style']['iconUrl']);
+
+        $data['settings']['iconUrl'] = '/application/files/1/icon.png';
+        $this->assertSame('/application/files/1/icon.png', self::build($data)['style']['iconUrl']);
+
+        $data['settings']['iconUrl'] = 'javascript:alert(1)';
+        $this->assertSame('', self::build($data)['style']['iconUrl']);
+    }
+
     public function testCategoriesAreSortedAndNecessaryListsTheEssentialCookies(): void
     {
         $config = self::build(self::data());
