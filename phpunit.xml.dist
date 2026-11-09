@@ -7,7 +7,7 @@
     colors="true"
 >
     <testsuites>
-        <testsuite name="composer_name">
+        <testsuite name="cookie_manager_kit">
             <directory>tests</directory>
         </testsuite>
     </testsuites>

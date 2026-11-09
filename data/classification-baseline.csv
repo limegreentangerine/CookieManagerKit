@@ -1,0 +1,84 @@
+kind,pattern,category,vendor,description,duration
+cookie,_ga,analytics,Google,Tells visitors apart for Google Analytics,2 years
+cookie,_ga_*,analytics,Google,Keeps session state for Google Analytics 4,2 years
+cookie,_gid,analytics,Google,Tells visitors apart for Google Analytics,1 day
+cookie,_gat*,analytics,Google,Limits how often Google Analytics is called,1 minute
+cookie,_gcl_*,marketing,Google,Links ad clicks to conversions for Google Ads,3 months
+cookie,IDE,marketing,Google,Used by Google ad services to personalise ads,13 months
+cookie,test_cookie,marketing,Google,Checks whether the browser accepts cookies for Google ads,15 minutes
+cookie,NID,marketing,Google,Remembers preferences and personalises Google ads,6 months
+cookie,PREF,preferences,Google,Remembers player and display preferences,8 months
+cookie,VISITOR_INFO1_LIVE,marketing,YouTube,Estimates bandwidth and personalises YouTube,6 months
+cookie,YSC,marketing,YouTube,Identifies a viewing session on embedded YouTube videos,Session
+cookie,_fbp,marketing,Meta,Identifies browsers for Meta advertising,3 months
+cookie,_fbc,marketing,Meta,Stores the last ad click for Meta advertising,3 months
+cookie,fr,marketing,Meta,Delivers and measures Meta advertising,3 months
+cookie,_hjSessionUser_*,analytics,Hotjar,Identifies a returning visitor for Hotjar,1 year
+cookie,_hjSession_*,analytics,Hotjar,Holds Hotjar session data,30 minutes
+cookie,_hjid,analytics,Hotjar,Identifies a visitor for Hotjar,1 year
+cookie,_clck,analytics,Microsoft Clarity,Identifies a visitor for Microsoft Clarity,1 year
+cookie,_clsk,analytics,Microsoft Clarity,Joins page views into one Clarity session,1 day
+cookie,MUID,marketing,Microsoft,Identifies browsers for Microsoft advertising,1 year
+cookie,_uetsid,marketing,Microsoft Advertising,Identifies a session for Microsoft Advertising,1 day
+cookie,_uetvid,marketing,Microsoft Advertising,Identifies a visitor for Microsoft Advertising,13 months
+cookie,_pk_id.*,analytics,Matomo,Identifies a visitor for Matomo,13 months
+cookie,_pk_ses.*,analytics,Matomo,Holds Matomo session data,30 minutes
+cookie,_pk_ref.*,analytics,Matomo,Remembers where a visitor came from for Matomo,6 months
+cookie,_ttp,marketing,TikTok,Measures and improves TikTok advertising,13 months
+cookie,_tt_enable_cookie,marketing,TikTok,Tells the TikTok pixel cookies are allowed,13 months
+cookie,li_gc,marketing,LinkedIn,Stores consent for LinkedIn advertising,6 months
+cookie,lidc,marketing,LinkedIn,Routes requests for LinkedIn,1 day
+cookie,bcookie,marketing,LinkedIn,Identifies browsers for LinkedIn,1 year
+cookie,_pin_unauth,marketing,Pinterest,Groups visitors for Pinterest advertising,1 year
+cookie,_rdt_uuid,marketing,Reddit,Identifies visitors for Reddit advertising,3 months
+cookie,hubspotutk,marketing,HubSpot,Identifies a visitor for HubSpot,6 months
+cookie,__hstc,marketing,HubSpot,Tracks visits for HubSpot,6 months
+cookie,__hssc,marketing,HubSpot,Counts sessions for HubSpot,30 minutes
+cookie,__hssrc,marketing,HubSpot,Detects a browser restart for HubSpot,Session
+cookie,__stripe_mid,necessary,Stripe,Helps Stripe detect fraud,1 year
+cookie,__stripe_sid,necessary,Stripe,Helps Stripe detect fraud during a session,30 minutes
+cookie,__cf_bm,necessary,Cloudflare,Tells bots and people apart,30 minutes
+cookie,cf_clearance,necessary,Cloudflare,Remembers that a security check was passed,1 year
+cookie,_cfuvid,necessary,Cloudflare,Applies rate limits,Session
+host,www.google-analytics.com,analytics,Google,Google Analytics measurement,
+host,*.google-analytics.com,analytics,Google,Google Analytics measurement,
+host,analytics.google.com,analytics,Google,Google Analytics measurement,
+host,www.googletagmanager.com,analytics,Google,Google Tag Manager loads other tags,
+host,*.doubleclick.net,marketing,Google,Google ad serving and measurement,
+host,www.googleadservices.com,marketing,Google,Google Ads conversion tracking,
+host,*.googlesyndication.com,marketing,Google,Google ad serving,
+host,connect.facebook.net,marketing,Meta,Meta pixel and social plugins,
+host,*.facebook.net,marketing,Meta,Meta scripts,
+host,www.facebook.com,marketing,Meta,Meta pixel and social plugins,
+host,static.hotjar.com,analytics,Hotjar,Hotjar behaviour analytics,
+host,script.hotjar.com,analytics,Hotjar,Hotjar behaviour analytics,
+host,*.hotjar.com,analytics,Hotjar,Hotjar behaviour analytics,
+host,*.clarity.ms,analytics,Microsoft Clarity,Microsoft Clarity behaviour analytics,
+host,bat.bing.com,marketing,Microsoft Advertising,Microsoft Advertising conversion tracking,
+host,snap.licdn.com,marketing,LinkedIn,LinkedIn Insight tag,
+host,px.ads.linkedin.com,marketing,LinkedIn,LinkedIn advertising,
+host,analytics.tiktok.com,marketing,TikTok,TikTok pixel,
+host,s.pinimg.com,marketing,Pinterest,Pinterest tag,
+host,ct.pinterest.com,marketing,Pinterest,Pinterest tag,
+host,static.ads-twitter.com,marketing,X,X advertising pixel,
+host,analytics.twitter.com,marketing,X,X advertising analytics,
+host,platform.twitter.com,marketing,X,X social embeds,
+host,www.youtube.com,marketing,YouTube,Embedded YouTube videos,
+host,www.youtube-nocookie.com,marketing,YouTube,Embedded YouTube videos (privacy-enhanced mode),
+host,player.vimeo.com,marketing,Vimeo,Embedded Vimeo videos,
+host,*.vimeo.com,marketing,Vimeo,Vimeo,
+host,js.hs-scripts.com,marketing,HubSpot,HubSpot tracking code,
+host,js.hs-analytics.net,marketing,HubSpot,HubSpot analytics,
+host,js.hsforms.net,marketing,HubSpot,HubSpot forms,
+host,*.hubspot.com,marketing,HubSpot,HubSpot,
+host,*.matomo.cloud,analytics,Matomo,Matomo analytics,
+host,plausible.io,analytics,Plausible,Plausible analytics,
+host,js.stripe.com,necessary,Stripe,Stripe payments and fraud prevention,
+host,*.stripe.com,necessary,Stripe,Stripe payments and fraud prevention,
+host,m.stripe.network,necessary,Stripe,Stripe fraud prevention,
+host,challenges.cloudflare.com,necessary,Cloudflare,Cloudflare Turnstile security check,
+host,www.recaptcha.net,necessary,Google reCAPTCHA,Spam protection on forms,
+host,fonts.googleapis.com,preferences,Google Fonts,Web fonts loaded from Google,
+host,fonts.gstatic.com,preferences,Google Fonts,Web fonts loaded from Google,
+host,maps.googleapis.com,preferences,Google Maps,Embedded maps,
+host,maps.gstatic.com,preferences,Google Maps,Embedded maps,

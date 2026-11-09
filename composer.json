@@ -1,22 +1,27 @@
 {
-	"name": "limegreentangerine/composer_package",
-	"description": "composer_description",
+	"name": "limegreentangerine/cookie_manager_kit",
+	"description": "ConcreteCMS package to manage Cookie Banner",
 	"type": "concrete5-package",
 	"license": "proprietary",
 	"minimum-stability": "stable",
 	"autoload": {
 		"psr-4": {
-			"ComposerPackage\\": "src/"
+			"CookieManagerKit\\": "src/"
 		}
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"ComposerPackage\\Tests\\": "tests/"
+			"CookieManagerKit\\Tests\\": "tests/"
 		}
 	},
-	"authors": [],
+	"authors": [
+		{
+			"name": "Dave Hendy",
+			"email": "david@limegreentangerine.co.uk"
+		}
+	],
 	"require": {
-		"limegreentangerine/class_kit": "^1.0"
+		"limegreentangerine/class_kit": "^1.0 || ^2.0"
 	},
 	"require-dev": {
 		"php": "^8.4",
@@ -31,7 +36,7 @@
 		}
 	},
 	"scripts": {
-		"typecheck": "./vendor/bin/phpstan analyse -c phpstan.neon --error-format=table || true",
+		"typecheck": "./vendor/bin/phpstan analyse -c phpstan.neon --error-format=table",
 		"test": "php -d error_reporting=\"E_ALL & ~E_DEPRECATED\" vendor/bin/phpunit",
 		"test-coverage": "php -d error_reporting=\"E_ALL & ~E_DEPRECATED\" vendor/bin/phpunit --coverage-text",
 		"format:php": "php-cs-fixer fix",
