@@ -2,6 +2,10 @@
 
 Notable changes to this project are documented here.
 
+## 1.0.0
+
+First stable release. Includes everything from 0.5.1 and earlier; no functional changes since 0.5.1.
+
 ## 0.5.1
 
 ### Added
