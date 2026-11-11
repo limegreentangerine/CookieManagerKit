@@ -1141,3 +1141,54 @@ describe('embed accept button', () => {
 		expect(root()).not.toBeNull();
 	});
 });
+
+describe('WCAG colour contrast guard', () => {
+	const withTokens = (tokens) => config({ style: { ...config().style, tokens } });
+	const set = (name) => root().style.getPropertyValue(name);
+
+	it('keeps a readable palette', () => {
+		mount(withTokens({ bg: '#ffffff', fg: '#111111', accent: '#0b5fff', buttonBg: '#0b5fff', buttonFg: '#ffffff' }));
+		expect(set('--cmk-fg')).toBe('#111111');
+		expect(set('--cmk-accent')).toBe('#0b5fff');
+		expect(set('--cmk-button-bg')).toBe('#0b5fff');
+	});
+
+	it('drops pairs below 4.5:1 so the stylesheet defaults apply', () => {
+		mount(withTokens({ bg: '#ffffff', fg: '#eeeeee', accent: '#ffff00', buttonBg: '#ffff00', buttonFg: '#ffffff' }));
+		expect(set('--cmk-fg')).toBe('');
+		expect(set('--cmk-bg')).toBe('');
+		expect(set('--cmk-accent')).toBe('');
+		expect(set('--cmk-button-bg')).toBe('');
+	});
+});
+
+describe('focus is not hidden behind the banner (2.4.11)', () => {
+	const w = window;
+	const overlap = (rect) => (el) => (el.getBoundingClientRect = () => rect);
+
+	it('scrolls a covered element into view when it takes focus', () => {
+		mount(config(), { ...BOOT });
+		root().getBoundingClientRect = () => ({ top: 100, bottom: 300, left: 0, right: 400 });
+		document.body.insertAdjacentHTML('beforeend', '<a href="#" id="under">x</a>');
+		const link = document.getElementById('under');
+		overlap({ top: 150, bottom: 170, left: 10, right: 60 })(link);
+
+		w.scrollBy = vi.fn();
+		link.focus();
+
+		expect(w.scrollBy).toHaveBeenCalledWith(0, 78);
+	});
+
+	it('leaves an uncovered element alone', () => {
+		mount();
+		root().getBoundingClientRect = () => ({ top: 100, bottom: 300, left: 0, right: 400 });
+		document.body.insertAdjacentHTML('beforeend', '<a href="#" id="clear">x</a>');
+		const link = document.getElementById('clear');
+		overlap({ top: 10, bottom: 30, left: 10, right: 60 })(link);
+
+		w.scrollBy = vi.fn();
+		link.focus();
+
+		expect(w.scrollBy).not.toHaveBeenCalled();
+	});
+});
