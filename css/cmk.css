@@ -151,6 +151,7 @@
 }
 
 .cmk__btn:focus-visible,
+.cmk-declaration__open:focus-visible,
 .cmk-widget:focus-visible,
 .cmk__link:focus-visible {
 	outline: 3px solid var(--cmk-accent);
@@ -182,7 +183,6 @@
 .cmk__note {
 	margin: 0.25rem 0 0;
 	font-size: 0.85em;
-	opacity: 0.8;
 }
 
 .cmk__services,
@@ -259,6 +259,7 @@
 	padding: 6px 8px;
 	text-align: left;
 	vertical-align: top;
+	overflow-wrap: anywhere;
 	border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
 
@@ -290,6 +291,12 @@ iframe[data-cmk-embed]:not([src]) {
 	background: #f2f2f2;
 	border: 1px solid rgba(0, 0, 0, 0.15);
 	border-radius: 8px;
+}
+
+.cmk-embed__accept:focus-visible,
+.cmk-embed__prefs:focus-visible {
+	outline: 3px solid #0b5fff;
+	outline-offset: 2px;
 }
 
 .cmk-embed__actions {

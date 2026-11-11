@@ -17,10 +17,10 @@ if (is_object($c) && $c->isEditMode()) { ?>
         <table class="cmk-declaration__table">
             <thead>
                 <tr>
-                    <th><?php echo t('Cookie') ?></th>
-                    <th><?php echo t('Provider') ?></th>
-                    <th><?php echo t('Purpose') ?></th>
-                    <th><?php echo t('Duration') ?></th>
+                    <th scope="col"><?php echo t('Cookie') ?></th>
+                    <th scope="col"><?php echo t('Provider') ?></th>
+                    <th scope="col"><?php echo t('Purpose') ?></th>
+                    <th scope="col"><?php echo t('Duration') ?></th>
                 </tr>
             </thead>
             <tbody>

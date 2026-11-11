@@ -114,8 +114,53 @@
 		return out;
 	}
 
+	function luminance(hex) {
+		return [1, 3, 5]
+			.map(function (i) {
+				var c = parseInt(hex.substr(i, 2), 16) / 255;
+
+				return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+			})
+			.reduce(function (sum, c, i) {
+				return sum + c * [0.2126, 0.7152, 0.0722][i];
+			}, 0);
+	}
+
+	function ratio(a, b) {
+		var x = luminance(a);
+		var y = luminance(b);
+
+		return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+	}
+
+	/* WCAG 1.4.3 / 1.4.11: a colour pair that fails 4.5:1 text contrast is dropped so the defaults apply. */
+	function readable(tokens, fg, bg) {
+		return (
+			!HEX.test(tokens[fg]) || !HEX.test(tokens[bg]) || ratio(tokens[fg], tokens[bg]) >= 4.5
+		);
+	}
+
 	function applyStyle(node, style) {
-		var tokens = style.tokens || {};
+		var tokens = Object.assign({}, style.tokens || {});
+
+		/* an unusable pair keeps the stylesheet defaults, which are compliant with each other */
+		if (!readable(tokens, 'fg', 'bg')) {
+			delete tokens.fg;
+			delete tokens.bg;
+		}
+
+		if (!readable(tokens, 'buttonFg', 'buttonBg')) {
+			delete tokens.buttonFg;
+			delete tokens.buttonBg;
+		}
+
+		/* accent is link text and the focus ring, so it must read against the banner background */
+		if (
+			HEX.test(tokens.accent) &&
+			ratio(tokens.accent, HEX.test(tokens.bg) ? tokens.bg : '#ffffff') < 4.5
+		) {
+			delete tokens.accent;
+		}
 
 		Object.keys(TOKEN_VARS).forEach(function (name) {
 			if (typeof tokens[name] === 'string' && HEX.test(tokens[name])) {
@@ -657,6 +702,30 @@
 		}
 	}
 
+	/* WCAG 2.4.11: keyboard focus must not end up hidden behind the (non-modal) banner. */
+	function clearBanner(event) {
+		var root = state.root;
+		var node = event.target;
+
+		if (
+			!root ||
+			!node ||
+			!node.getBoundingClientRect ||
+			root.contains(node) ||
+			node === d.body
+		) {
+			return;
+		}
+
+		var a = root.getBoundingClientRect();
+		var b = node.getBoundingClientRect();
+
+		if (b.bottom > a.top && b.top < a.bottom && b.right > a.left && b.left < a.right) {
+			/* every banner position is anchored to the bottom, so scroll the element up until it clears the banner */
+			w.scrollBy(0, b.bottom - a.top + 8);
+		}
+	}
+
 	runtime.start = function (config) {
 		cmk = w.cmk;
 
@@ -668,6 +737,7 @@
 		state.config = config;
 		d.addEventListener('click', onClick);
 		d.addEventListener('keydown', onKey);
+		d.addEventListener('focusin', clearBanner);
 		mountWidget(config);
 
 		if (!cmk.get()) {
@@ -691,6 +761,7 @@
 	runtime.stop = function () {
 		d.removeEventListener('click', onClick);
 		d.removeEventListener('keydown', onKey);
+		d.removeEventListener('focusin', clearBanner);
 		close(false);
 		state.opener = null;
 
