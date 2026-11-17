@@ -95,6 +95,25 @@ final class ConfigBuilderTest extends TestCase
         $this->assertSame('', self::build($data)['style']['iconUrl']);
     }
 
+    public function testSettingsButtonDisplayAndColours(): void
+    {
+        $data = self::data();
+        $style = self::build($data)['style'];
+        $this->assertSame('text', $style['widgetDisplay']);
+        // no widget colours saved: they follow the button colours
+        $this->assertSame('#00ff00', $style['tokens']['widgetBg']);
+        $this->assertSame('#000000', $style['tokens']['widgetFg']);
+
+        $data['settings']['widgetDisplay'] = 'icon';
+        $data['settings']['tokens']['widgetBg'] = '#222222';
+        $style = self::build($data)['style'];
+        $this->assertSame('icon', $style['widgetDisplay']);
+        $this->assertSame('#222222', $style['tokens']['widgetBg']);
+
+        $data['settings']['widgetDisplay'] = 'url(x)';
+        $this->assertSame('text', self::build($data)['style']['widgetDisplay']);
+    }
+
     public function testCategoriesAreSortedAndNecessaryListsTheEssentialCookies(): void
     {
         $config = self::build(self::data());

@@ -34,7 +34,31 @@ final class SettingsTest extends TestCase
         $this->assertSame(180, $settings->getLifetimeDays());
         $this->assertSame(1, $settings->getPolicyVersion());
         $this->assertSame('#ffffff', $settings->getToken('bg'));
-        $this->assertSame(['bg', 'fg', 'accent', 'buttonBg', 'buttonFg'], array_keys($settings->getTokens()));
+        $this->assertSame(['bg', 'fg', 'accent', 'buttonBg', 'buttonFg', 'widgetBg', 'widgetFg'], array_keys($settings->getTokens()));
+        $this->assertSame('text', $settings->getWidgetDisplay());
+        $this->assertFalse($settings->hasCustomWidgetColours());
+    }
+
+    public function testSettingsButtonColoursFollowTheButtonUntilSet(): void
+    {
+        $settings = (new Settings())->setToken('buttonBg', '#123456')->setToken('buttonFg', '#fefefe');
+        $this->assertSame('#123456', $settings->getToken('widgetBg'));
+        $this->assertSame('#fefefe', $settings->getToken('widgetFg'));
+
+        $settings->setToken('widgetBg', '#ABCDEF')->setToken('widgetFg', '#000000');
+        $this->assertTrue($settings->hasCustomWidgetColours());
+        $this->assertSame('#abcdef', $settings->getToken('widgetBg'));
+
+        $settings->setToken('widgetBg', null)->setToken('widgetFg', null);
+        $this->assertFalse($settings->hasCustomWidgetColours());
+        $this->assertSame('#123456', $settings->getToken('widgetBg'));
+    }
+
+    public function testSettingsButtonDisplayIsAllowlisted(): void
+    {
+        $settings = new Settings();
+        $this->assertSame('both', $settings->setWidgetDisplay('both')->getWidgetDisplay());
+        $this->assertSame('text', $settings->setWidgetDisplay('<img>')->getWidgetDisplay());
     }
 
     public function testHostileValuesFallBackToDefaults(): void

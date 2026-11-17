@@ -114,6 +114,7 @@ final class Catalog
                 'consentMode' => $settings->isConsentModeEnabled(),
                 'defaultModel' => $settings->getDefaultModel(),
                 'widget' => $settings->isWidgetEnabled(),
+                'widgetDisplay' => $settings->getWidgetDisplay(),
                 'position' => $settings->getPosition(),
                 'layout' => $settings->getLayout(),
                 'font' => $settings->getFont(),

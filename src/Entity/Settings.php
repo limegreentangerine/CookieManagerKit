@@ -24,7 +24,11 @@ class Settings extends UpdatedGuidEntity
         'accent' => 'tokenAccent',
         'buttonBg' => 'tokenButtonBg',
         'buttonFg' => 'tokenButtonFg',
+        'widgetBg' => 'tokenWidgetBg',
+        'widgetFg' => 'tokenWidgetFg',
     ];
+    /** Settings button colours left empty follow these tokens. */
+    private const TOKEN_FALLBACKS = ['widgetBg' => 'buttonBg', 'widgetFg' => 'buttonFg'];
     /**
      * @ORM\Column(type="string", length=16, nullable=false, options={"default": "bottom-right", "comment": "Banner position"})
      */
@@ -59,6 +63,21 @@ class Settings extends UpdatedGuidEntity
      * @ORM\Column(type="boolean", nullable=false, options={"default": true, "comment": "Show the floating cookie settings button"})
      */
     protected $widgetEnabled = true;
+
+    /**
+     * @ORM\Column(type="string", length=8, nullable=false, options={"default": "text", "comment": "Settings button shows: text, icon or both"})
+     */
+    protected $widgetDisplay = 'text';
+
+    /**
+     * @ORM\Column(type="string", length=7, nullable=true, options={"comment": "Settings button background, empty follows the button colour"})
+     */
+    protected $tokenWidgetBg;
+
+    /**
+     * @ORM\Column(type="string", length=7, nullable=true, options={"comment": "Settings button text, empty follows the button colour"})
+     */
+    protected $tokenWidgetFg;
 
     /**
      * @ORM\Column(type="string", length=7, nullable=false, options={"default": "#ffffff", "comment": "Background colour"})
@@ -241,9 +260,30 @@ class Settings extends UpdatedGuidEntity
         return $this;
     }
 
+    public function getWidgetDisplay(): string
+    {
+        return StyleRules::choice($this->widgetDisplay, StyleRules::WIDGET_DISPLAYS, 'text');
+    }
+
+    public function setWidgetDisplay($value): self
+    {
+        $this->widgetDisplay = StyleRules::choice($value, StyleRules::WIDGET_DISPLAYS, 'text');
+
+        return $this;
+    }
+
+    public function hasCustomWidgetColours(): bool
+    {
+        return $this->tokenWidgetBg !== null || $this->tokenWidgetFg !== null;
+    }
+
     public function getToken(string $name): string
     {
         $property = self::TOKEN_PROPERTIES[$name] ?? null;
+
+        if ($property !== null && $this->{$property} === null && isset(self::TOKEN_FALLBACKS[$name])) {
+            return $this->getToken(self::TOKEN_FALLBACKS[$name]);
+        }
 
         return $property === null ? '' : StyleRules::hex($this->{$property}, StyleRules::DEFAULT_TOKENS[$name]);
     }
@@ -252,7 +292,9 @@ class Settings extends UpdatedGuidEntity
     {
         $property = self::TOKEN_PROPERTIES[$name] ?? null;
 
-        if ($property !== null) {
+        if ($property !== null && $value === null && isset(self::TOKEN_FALLBACKS[$name])) {
+            $this->{$property} = null;
+        } elseif ($property !== null) {
             $this->{$property} = StyleRules::hex($value, StyleRules::DEFAULT_TOKENS[$name]);
         }
 
