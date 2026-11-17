@@ -15,6 +15,7 @@ $positions = [
 ];
 $layouts = ['stacked' => t('Buttons stacked'), 'inline' => t('Buttons in a row')];
 $fonts = ['inherit' => t('Use the theme font'), 'system' => t('Use the system font')];
+$widgetDisplays = ['text' => t('Wording'), 'icon' => t('Icon only'), 'both' => t('Icon and wording')];
 $fileSelector = app('helper/concrete/file_manager');
 $colours = [
     'tokenBg' => [t('Background'), 'bg'],
@@ -74,6 +75,33 @@ $colours = [
                 <legend><?php echo t('Colours') ?></legend>
 
                 <?php foreach ($colours as $id => [$label, $tokenName]) { ?>
+                    <div class="form-group mb-3">
+                        <label class="form-label" for="<?php echo O::e($id) ?>"><?php echo O::e($label) ?></label>
+                        <input type="color" class="form-control form-control-color" id="<?php echo O::e($id) ?>" name="<?php echo O::e($id) ?>" value="<?php echo O::e($settings->getToken($tokenName)) ?>">
+                    </div>
+                <?php } ?>
+            </fieldset>
+
+            <fieldset class="mb-4">
+                <legend><?php echo t('Cookie settings button') ?></legend>
+                <p class="form-text"><?php echo t('The floating button visitors use to change their choice. Its wording is set on the Banner text page.') ?></p>
+
+                <div class="form-group mb-3">
+                    <label class="form-label" for="widgetDisplay"><?php echo t('Button shows') ?></label>
+                    <select class="form-select" id="widgetDisplay" name="widgetDisplay" aria-describedby="widgetDisplayHelp">
+                        <?php foreach ($widgetDisplays as $value => $label) { ?>
+                            <option value="<?php echo O::e($value) ?>" <?php echo O::e($settings->getWidgetDisplay() === $value ? 'selected' : '') ?>><?php echo O::e($label) ?></option>
+                        <?php } ?>
+                    </select>
+                    <div class="form-text" id="widgetDisplayHelp"><?php echo t('Uses the icon above. If no icon is set, the wording is shown.') ?></div>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="widgetCustomColours" name="widgetCustomColours" value="1" <?php echo O::e($settings->hasCustomWidgetColours() ? 'checked' : '') ?>>
+                    <label class="form-check-label" for="widgetCustomColours"><?php echo t('Use its own colours (otherwise it uses the button colours)') ?></label>
+                </div>
+
+                <?php foreach (['tokenWidgetBg' => [t('Settings button background'), 'widgetBg'], 'tokenWidgetFg' => [t('Settings button text'), 'widgetFg']] as $id => [$label, $tokenName]) { ?>
                     <div class="form-group mb-3">
                         <label class="form-label" for="<?php echo O::e($id) ?>"><?php echo O::e($label) ?></label>
                         <input type="color" class="form-control form-control-color" id="<?php echo O::e($id) ?>" name="<?php echo O::e($id) ?>" value="<?php echo O::e($settings->getToken($tokenName)) ?>">

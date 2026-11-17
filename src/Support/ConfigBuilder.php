@@ -142,6 +142,10 @@ final class ConfigBuilder
             $tokens[$name] = StyleRules::hex($savedTokens[$name] ?? null, $fallback);
         }
 
+        // A catalog saved before the settings button had its own colours: keep it on the button colours.
+        $tokens['widgetBg'] = StyleRules::hex($savedTokens['widgetBg'] ?? null, $tokens['buttonBg']);
+        $tokens['widgetFg'] = StyleRules::hex($savedTokens['widgetFg'] ?? null, $tokens['buttonFg']);
+
         $config = [
             'policyVersion' => max(1, (int) ($settings['policyVersion'] ?? 1)),
             'locale' => $locale,
@@ -167,6 +171,7 @@ final class ConfigBuilder
                 'radius' => StyleRules::radius($settings['radius'] ?? 8),
                 'shadow' => (bool) ($settings['shadow'] ?? true),
                 'iconUrl' => Output::safeUrl(is_string($settings['iconUrl'] ?? null) ? $settings['iconUrl'] : ''),
+                'widgetDisplay' => StyleRules::choice($settings['widgetDisplay'] ?? null, StyleRules::WIDGET_DISPLAYS, 'text'),
             ],
             'lifetimeDays' => StyleRules::lifetime($settings['lifetimeDays'] ?? null),
             'consentMode' => (bool) ($settings['consentMode'] ?? false),

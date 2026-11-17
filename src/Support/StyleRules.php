@@ -11,6 +11,7 @@ final class StyleRules
     public const POSITIONS = ['bottom-left', 'bottom-right', 'bottom-bar', 'center-modal'];
     public const LAYOUTS = ['stacked', 'inline'];
     public const FONTS = ['inherit', 'system'];
+    public const WIDGET_DISPLAYS = ['text', 'icon', 'both'];
 
     public const DEFAULT_TOKENS = [
         'bg' => '#ffffff',
@@ -18,6 +19,8 @@ final class StyleRules
         'accent' => '#0b5fff',
         'buttonBg' => '#0b5fff',
         'buttonFg' => '#ffffff',
+        'widgetBg' => '#0b5fff',
+        'widgetFg' => '#ffffff',
     ];
 
     public const MIN_LIFETIME_DAYS = 30;

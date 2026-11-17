@@ -28,7 +28,9 @@
 		fg: '--cmk-fg',
 		accent: '--cmk-accent',
 		buttonBg: '--cmk-button-bg',
-		buttonFg: '--cmk-button-fg'
+		buttonFg: '--cmk-button-fg',
+		widgetBg: '--cmk-widget-bg',
+		widgetFg: '--cmk-widget-fg'
 	};
 
 	var cmk = null;
@@ -152,6 +154,12 @@
 		if (!readable(tokens, 'buttonFg', 'buttonBg')) {
 			delete tokens.buttonFg;
 			delete tokens.buttonBg;
+		}
+
+		/* an unreadable settings button pair falls back to the button colours in the stylesheet */
+		if (!readable(tokens, 'widgetFg', 'widgetBg')) {
+			delete tokens.widgetFg;
+			delete tokens.widgetBg;
 		}
 
 		/* accent is link text and the focus ring, so it must read against the banner background */
@@ -577,13 +585,34 @@
 			return;
 		}
 
-		state.widget = el('button', {
-			type: 'button',
-			class: 'cmk-widget',
-			'data-cmk-open': true,
-			text: text(labels.widget, FALLBACK.widget)
-		});
-		applyStyle(state.widget, config.style || {});
+		var style = config.style || {};
+		var label = text(labels.widget, FALLBACK.widget);
+		var iconUrl = safeHref(style.iconUrl);
+		var display = iconUrl
+			? pick(style.widgetDisplay, ['text', 'icon', 'both'], 'text')
+			: 'text';
+
+		state.widget = el(
+			'button',
+			{
+				type: 'button',
+				class: 'cmk-widget',
+				'data-cmk-open': true,
+				'data-display': display
+			},
+			[
+				/* icon only: the image alt is the button's accessible name */
+				display !== 'text'
+					? el('img', {
+							class: 'cmk-widget__icon',
+							src: iconUrl,
+							alt: display === 'icon' ? label : ''
+						})
+					: null,
+				display !== 'icon' ? el('span', { text: label }) : null
+			]
+		);
+		applyStyle(state.widget, style);
 		d.body.appendChild(state.widget);
 	}
 

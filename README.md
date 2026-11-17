@@ -22,6 +22,9 @@ live site.
 - Script blocking until consent.
 - A first-party consent cookie.
 - A floating settings button, and `data-cmk-open` to reopen the settings from any element.
+  Its wording is set on the Banner text page. On the Appearance page you choose whether it
+  shows the wording, the banner icon, or both (it shows the wording if no icon is set), and
+  you can give it its own colours (it uses the button colours by default).
 - Banner styling with a live preview (Appearance page).
 - Anonymous banner statistics (Statistics page, see below).
 - A cookie and script scanner with a review queue (Scanner pages, see below).

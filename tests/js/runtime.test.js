@@ -89,6 +89,46 @@ describe('showing the banner', () => {
 		expect(document.querySelector('.cmk-widget').textContent).toBe('Cookie settings');
 	});
 
+	describe('widget display', () => {
+		const widget = () => document.querySelector('.cmk-widget');
+		const withDisplay = (widgetDisplay, iconUrl = '/application/files/1/icon.png') =>
+			config({ style: { ...config().style, widgetDisplay, iconUrl } });
+
+		beforeEach(() => consent(['necessary']));
+
+		it('shows only the icon, named by the label, in icon mode', () => {
+			mount(withDisplay('icon'));
+			expect(widget().querySelector('img').getAttribute('alt')).toBe('Cookie settings');
+			expect(widget().textContent).toBe('');
+			expect(widget().dataset.display).toBe('icon');
+		});
+
+		it('shows a decorative icon and the label in both mode', () => {
+			mount(withDisplay('both'));
+			expect(widget().querySelector('img').getAttribute('alt')).toBe('');
+			expect(widget().textContent).toBe('Cookie settings');
+		});
+
+		it('falls back to the label when there is no usable icon', () => {
+			mount(withDisplay('icon', 'javascript:alert(1)'));
+			expect(widget().querySelector('img')).toBeNull();
+			expect(widget().textContent).toBe('Cookie settings');
+			expect(widget().dataset.display).toBe('text');
+		});
+
+		it('applies readable settings button colours and drops unreadable ones', () => {
+			const tokens = (widgetBg, widgetFg) => config({ style: { ...config().style, tokens: { ...config().style.tokens, widgetBg, widgetFg } } });
+
+			mount(tokens('#111111', '#ffffff'));
+			expect(widget().style.getPropertyValue('--cmk-widget-bg')).toBe('#111111');
+			window.cmkRuntime.stop();
+
+			mount(tokens('#ffff00', '#ffffff'));
+			expect(widget().style.getPropertyValue('--cmk-widget-bg')).toBe('');
+			expect(widget().style.getPropertyValue('--cmk-widget-fg')).toBe('');
+		});
+	});
+
 	it('omits the widget when the admin turned it off', () => {
 		mount(config({ widget: false }));
 

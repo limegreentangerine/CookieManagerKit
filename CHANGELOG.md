@@ -2,6 +2,17 @@
 
 Notable changes to this project are documented here.
 
+## 1.1.0
+
+### Added
+
+- Cookie settings button options on the Appearance page: show the wording, the banner icon only, or the icon and wording. It shows the wording if no icon is set. In icon-only mode the wording becomes the button's accessible name.
+- Optional colours of its own for the cookie settings button. When none are set it keeps using the button colours. A pair that fails 4.5:1 contrast is ignored.
+
+### Upgrade notes
+
+- Run **Update** for the package in the dashboard to add the `widgetDisplay`, `tokenWidgetBg` and `tokenWidgetFg` columns to the settings table.
+
 ## 1.0.0
 
 First stable release. Includes everything from 0.5.1 and earlier; no functional changes since 0.5.1.

@@ -83,8 +83,25 @@ class Appearance extends DashboardPageController
             return $this->buildRedirect(self::URL)->send();
         }
 
+        if (!is_string($this->post('widgetDisplay')) || !in_array($this->post('widgetDisplay'), StyleRules::WIDGET_DISPLAYS, true)) {
+            $this->flash('error', t('Please choose what the cookie settings button shows.'));
+
+            return $this->buildRedirect(self::URL)->send();
+        }
+
+        $customWidget = $this->post('widgetCustomColours') !== null;
+
+        if ($customWidget && (!StyleRules::isHex($this->post('tokenWidgetBg')) || !StyleRules::isHex($this->post('tokenWidgetFg')))) {
+            $this->flash('error', t('Colours must be six digit hex codes such as #0b5fff.'));
+
+            return $this->buildRedirect(self::URL)->send();
+        }
+
         $settings = Settings::get();
-        $settings->setIconFileId($iconId)
+        $settings->setToken('widgetBg', $customWidget ? $this->post('tokenWidgetBg') : null)
+            ->setToken('widgetFg', $customWidget ? $this->post('tokenWidgetFg') : null)
+            ->setWidgetDisplay($this->post('widgetDisplay'))
+            ->setIconFileId($iconId)
             ->setPosition($this->post('position'))
             ->setLayout($this->post('layout'))
             ->setFont($this->post('font'))
