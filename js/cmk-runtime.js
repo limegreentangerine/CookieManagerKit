@@ -578,6 +578,31 @@
 		}
 	}
 
+	/*
+	 * SVG filter that repaints every opaque pixel of the icon in the widget text colour.
+	 * flood-color is set in CSS so it can read var(--cmk-widget-fg); works for cross-origin images (no CORS, unlike mask).
+	 */
+	function tintFilter() {
+		var ns = 'http://www.w3.org/2000/svg';
+		var svg = d.createElementNS(ns, 'svg');
+		var filter = d.createElementNS(ns, 'filter');
+		var flood = d.createElementNS(ns, 'feFlood');
+		var composite = d.createElementNS(ns, 'feComposite');
+
+		svg.setAttribute('class', 'cmk-widget__tint');
+		svg.setAttribute('aria-hidden', 'true');
+		svg.setAttribute('focusable', 'false');
+		filter.setAttribute('id', 'cmk-widget-tint');
+		filter.setAttribute('color-interpolation-filters', 'sRGB');
+		composite.setAttribute('in2', 'SourceAlpha');
+		composite.setAttribute('operator', 'in');
+		filter.appendChild(flood);
+		filter.appendChild(composite);
+		svg.appendChild(filter);
+
+		return svg;
+	}
+
 	function mountWidget(config) {
 		var labels = (config.banner && config.banner.labels) || {};
 
@@ -609,6 +634,7 @@
 							alt: display === 'icon' ? label : ''
 						})
 					: null,
+				display !== 'text' ? tintFilter() : null,
 				display !== 'icon' ? el('span', { text: label }) : null
 			]
 		);

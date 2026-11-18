@@ -2,6 +2,12 @@
 
 Notable changes to this project are documented here.
 
+## 1.2.0
+
+### Changed
+
+- The icon on the cookie settings button is now drawn in the button's text colour, so a dark icon stays visible on a dark button. Every opaque pixel takes that colour, so a multi-colour logo shows as a single-colour silhouette. The banner heading icon is unchanged.
+
 ## 1.1.0
 
 ### Added

@@ -220,6 +220,19 @@
 	width: 1.5em;
 	height: 1.5em;
 	object-fit: contain;
+	filter: url('#cmk-widget-tint');
+}
+
+/* Holds the tint filter only; takes no space in the button. */
+.cmk-widget__tint {
+	position: absolute;
+	width: 0;
+	height: 0;
+	overflow: hidden;
+}
+
+.cmk-widget__tint feFlood {
+	flood-color: var(--cmk-widget-fg, var(--cmk-button-fg));
 }
 
 @media (prefers-reduced-motion: no-preference) {
