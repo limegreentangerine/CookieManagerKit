@@ -103,6 +103,13 @@ describe('showing the banner', () => {
 			expect(widget().dataset.display).toBe('icon');
 		});
 
+		it('adds the tint filter that recolours the icon in the widget text colour', () => {
+			mount(withDisplay('icon'));
+			const filter = widget().querySelector('filter#cmk-widget-tint');
+			expect(filter.namespaceURI).toBe('http://www.w3.org/2000/svg');
+			expect(filter.querySelector('feComposite').getAttribute('operator')).toBe('in');
+		});
+
 		it('shows a decorative icon and the label in both mode', () => {
 			mount(withDisplay('both'));
 			expect(widget().querySelector('img').getAttribute('alt')).toBe('');
