@@ -27,6 +27,8 @@ live site.
   you can give it its own colours (it uses the button colours by default). The icon on the
   button is drawn in the button's text colour.
 - Banner styling with a live preview (Appearance page).
+- A default banner icon: a first install adds `images/cookie.svg` to the file manager and sets it
+  as the banner icon. Change or clear it on the Appearance page; upgrades never reset it.
 - Anonymous banner statistics (Statistics page, see below).
 - A cookie and script scanner with a review queue (Scanner pages, see below).
 - A consent log, re-consent with a recorded reason, Google Consent Mode v2 and an opt-in or opt-out default model (see below).

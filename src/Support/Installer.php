@@ -3,6 +3,7 @@
 namespace CookieManagerKit\Support;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Concrete\Core\File\Import\FileImporter;
 use CookieManagerKit\Entity\{BannerContent, Category, PolicyVersionChange, Settings};
 
 /**
@@ -73,6 +74,25 @@ final class Installer
         }
 
         return (new PolicyVersionChange())->setVersion($version)->setReason(self::INITIAL_REASON)->setCreatedAt($now);
+    }
+
+    /**
+     * Import the bundled icon into the file manager and make it the banner icon. Only called on a first install, so an
+     * admin who later clears or changes the icon keeps their choice.
+     * Best effort: the icon is optional, so a failed import (storage, SVG sanitiser, disallowed type) must not fail
+     * the install.
+     */
+    public static function installDefaultIcon(EntityManagerInterface $em, string $path): void
+    {
+        try {
+            $version = app(FileImporter::class)->importLocalFile($path, 'cookie.svg');
+            $settings = Settings::get()->setIconFileId($version->getFileID());
+            $em->persist($settings);
+            $em->flush();
+            Catalog::flush();
+        } catch (\Throwable $e) {
+            ErrorLog::record($e);
+        }
     }
 
     public static function seed(EntityManagerInterface $em, string $locale): void

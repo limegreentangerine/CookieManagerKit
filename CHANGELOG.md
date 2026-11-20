@@ -2,6 +2,12 @@
 
 Notable changes to this project are documented here.
 
+## 1.3.0
+
+### Added
+
+- On a first install, the bundled cookie icon is added to the file manager and set as the banner icon (Appearance page). Upgrades and existing sites are left alone, so an icon an admin has cleared or changed stays that way.
+
 ## 1.2.0
 
 ### Changed
