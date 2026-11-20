@@ -4,9 +4,7 @@ A cookie-consent platform for ConcreteCMS 9.5. It shows a consent banner, holds 
 tracking and marketing scripts until the visitor agrees, remembers the choice and lets
 the visitor change it later.
 
-Status: install and browser verification pending. The install, seeding and routing
-behaviour has been verified by unit tests and code review but has not yet been run on a
-live site.
+Status: complete and running on live sites. Changes are listed in `CHANGELOG.md`.
 
 ## Requirements
 
@@ -14,7 +12,7 @@ live site.
 - PHP 8.4. The tracking-snippet rewriter uses PHP 8.4's `\Dom\HTMLDocument` HTML5 parser.
 - The `class_kit` package.
 
-## What it does (phases 1 to 3)
+## What it does
 
 - Consent categories and services, managed under `/dashboard/cookie_manager`.
 - Multilingual banner text: plain text, one set per site locale. The default locale comes
@@ -26,14 +24,20 @@ live site.
   shows the wording, the banner icon, or both (it shows the wording if no icon is set), and
   you can give it its own colours (it uses the button colours by default). The icon on the
   button is drawn in the button's text colour.
-- Banner styling with a live preview (Appearance page).
+- Banner styling with a live preview (Appearance page). The preview shows the banner and the
+  settings button and updates as you change any setting, including the icon.
+- Colour contrast guard: any colour pair below the WCAG AA 4.5:1 contrast minimum (text on
+  background, button text on button, settings button text on its background, accent on
+  background) is replaced on the live site with the readable defaults. The preview does the
+  same and lists each failing pair with its contrast ratio. Tick "Use my colours even if they
+  are hard to read" to keep the branding anyway; the warnings stay, reworded. Hard-to-read
+  consent buttons can count against a site in a privacy audit, and public sector sites must
+  meet the minimum, so the setting is off by default.
 - A default banner icon: a first install adds `images/cookie.svg` to the file manager and sets it
   as the banner icon. Change or clear it on the Appearance page; upgrades never reset it.
 - Anonymous banner statistics (Statistics page, see below).
 - A cookie and script scanner with a review queue (Scanner pages, see below).
 - A consent log, re-consent with a recorded reason, Google Consent Mode v2 and an opt-in or opt-out default model (see below).
-
-Not built yet (later phases): regional rules, A/B testing, and report export and sharing.
 
 ## Cookie declaration
 
@@ -220,7 +224,7 @@ cookie's name, purpose and duration under the always-allowed category:
 
 ## Security notes
 
-- Banner and category text is plain text only; no rich text in this phase.
+- Banner and category text is plain text only; there is no rich text.
 - Endpoints: `GET /cookie-manager/config/{locale}.json` and `POST /cookie-manager/consent`
   (plus the scanner's `POST /cookie-manager/scan/report` and `GET /cookie-manager/scan/beacon.js`, which need a valid scan token).
   The consent endpoint is same-origin, JSON only, strictly schema-checked and
@@ -233,10 +237,11 @@ cookie's name, purpose and duration under the always-allowed category:
 
 ## Known limitations
 
-- Install and browser verification on a live site is pending (see above).
 - Upgrades re-create default categories that were deleted.
 - Scripts that already ran cannot be un-run; the page reloads on withdrawal.
 - The Appearance font option is "theme font" or "system font".
+- The contrast check exists twice, in `js/cmk-runtime.js` (`applyStyle`) and in
+  `js/cmk-dashboard.js` (`dropUnreadable`), so the preview can match the site. Change both together.
 - A tracking snippet that contains `<svg>` or `<math>` is removed entirely (it cannot be verified safely), and `data-cmk-*` attributes pasted into a tracking snippet's scripts are stripped.
 
 ## Developing

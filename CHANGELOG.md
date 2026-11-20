@@ -2,6 +2,17 @@
 
 Notable changes to this project are documented here.
 
+## 1.4.0
+
+### Added
+
+- Appearance: "Use my colours even if they are hard to read" setting (off by default). When on, the banner and settings button use the chosen colours even below the 4.5:1 contrast minimum; the dashboard still warns.
+- Appearance preview shows the cookie settings button and updates the icon as soon as one is chosen or cleared.
+
+### Fixed
+
+- The Appearance preview now drops unreadable colour pairs exactly as the live banner does, and lists each one with its contrast ratio, instead of showing colours the site would never use.
+
 ## 1.3.0
 
 ### Added

@@ -276,6 +276,18 @@
 	box-shadow: 0 8px 30px rgb(0 0 0 / 25%);
 }
 
+.cmk-preview-stage .cmk-widget {
+	z-index: auto;
+	position: relative;
+	inset: auto;
+	margin-top: 24px;
+}
+
+/* the preview toggles the icon and wording; class display rules would otherwise beat [hidden] */
+.cmk-preview-stage [hidden] {
+	display: none !important;
+}
+
 .cmk-declaration__table {
 	width: 100%;
 	border-collapse: collapse;

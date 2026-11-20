@@ -55,6 +55,11 @@ class Settings extends UpdatedGuidEntity
     protected $shadow = true;
 
     /**
+     * @ORM\Column(type="boolean", nullable=false, options={"default": false, "comment": "Use the colours even when they fail WCAG contrast"})
+     */
+    protected $ignoreContrast = false;
+
+    /**
      * @ORM\Column(type="integer", nullable=true, options={"comment": "File manager image shown next to the banner title"})
      */
     protected $iconFileId;
@@ -232,6 +237,18 @@ class Settings extends UpdatedGuidEntity
     public function setShadow($value): self
     {
         $this->shadow = (bool) $value;
+
+        return $this;
+    }
+
+    public function ignoresContrast(): bool
+    {
+        return (bool) $this->ignoreContrast;
+    }
+
+    public function setIgnoreContrast($value): self
+    {
+        $this->ignoreContrast = (bool) $value;
 
         return $this;
     }

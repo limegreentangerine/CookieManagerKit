@@ -1207,6 +1207,21 @@ describe('WCAG colour contrast guard', () => {
 		expect(set('--cmk-accent')).toBe('');
 		expect(set('--cmk-button-bg')).toBe('');
 	});
+
+	it('keeps every colour when the admin chose to ignore contrast', () => {
+		const tokens = { bg: '#ffffff', fg: '#eeeeee', accent: '#ffff00', buttonBg: '#ffff00', buttonFg: '#ffffff' };
+		mount(config({ style: { ...config().style, tokens, ignoreContrast: true } }));
+		expect(set('--cmk-fg')).toBe('#eeeeee');
+		expect(set('--cmk-bg')).toBe('#ffffff');
+		expect(set('--cmk-accent')).toBe('#ffff00');
+		expect(set('--cmk-button-bg')).toBe('#ffff00');
+	});
+
+	it('only a literal true turns the guard off', () => {
+		const tokens = { bg: '#ffffff', fg: '#eeeeee', accent: '#0b5fff', buttonBg: '#0b5fff', buttonFg: '#ffffff' };
+		mount(config({ style: { ...config().style, tokens, ignoreContrast: 'true' } }));
+		expect(set('--cmk-fg')).toBe('');
+	});
 });
 
 describe('focus is not hidden behind the banner (2.4.11)', () => {

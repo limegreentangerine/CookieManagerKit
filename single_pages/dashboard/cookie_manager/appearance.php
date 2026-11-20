@@ -80,6 +80,12 @@ $colours = [
                         <input type="color" class="form-control form-control-color" id="<?php echo O::e($id) ?>" name="<?php echo O::e($id) ?>" value="<?php echo O::e($settings->getToken($tokenName)) ?>">
                     </div>
                 <?php } ?>
+
+                <div class="form-check mb-1">
+                    <input type="checkbox" class="form-check-input" id="ignoreContrast" name="ignoreContrast" value="1" aria-describedby="ignoreContrastHelp" <?php echo O::e($settings->ignoresContrast() ? 'checked' : '') ?>>
+                    <label class="form-check-label" for="ignoreContrast"><?php echo t('Use my colours even if they are hard to read') ?></label>
+                </div>
+                <div class="form-text mb-3" id="ignoreContrastHelp"><?php echo t('Normally, colours below the 4.5:1 accessibility contrast minimum are replaced with readable defaults. Tick this to keep your branding anyway. Hard-to-read consent buttons can count against you in a privacy audit, and public sector sites must meet this minimum.') ?></div>
             </fieldset>
 
             <fieldset class="mb-4">
@@ -133,7 +139,7 @@ $colours = [
 
     <div class="col-lg-7">
         <h5><?php echo t('Preview') ?></h5>
-        <p class="text-muted"><?php echo t('Uses the default language. The real banner is built the same way and follows these settings after you save.') ?></p>
+        <p class="text-muted"><?php echo t('Updates as you change the settings, using the default language. The real banner and settings button look like this after you save.') ?></p>
         <?php View::element('dashboard/banner_preview', ['settings' => $settings, 'banner' => $banner], 'cookie_manager_kit') ?>
     </div>
 </div>

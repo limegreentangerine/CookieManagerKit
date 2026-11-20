@@ -106,7 +106,8 @@ class Appearance extends DashboardPageController
             ->setLayout($this->post('layout'))
             ->setFont($this->post('font'))
             ->setRadius($radius)
-            ->setShadow($this->post('shadow') !== null);
+            ->setShadow($this->post('shadow') !== null)
+            ->setIgnoreContrast($this->post('ignoreContrast') !== null);
 
         foreach (self::TOKENS as $field => $token) {
             $settings->setToken($token, $this->post($field));

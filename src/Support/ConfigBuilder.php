@@ -170,6 +170,7 @@ final class ConfigBuilder
                 'tokens' => $tokens,
                 'radius' => StyleRules::radius($settings['radius'] ?? 8),
                 'shadow' => (bool) ($settings['shadow'] ?? true),
+                'ignoreContrast' => (bool) ($settings['ignoreContrast'] ?? false),
                 'iconUrl' => Output::safeUrl(is_string($settings['iconUrl'] ?? null) ? $settings['iconUrl'] : ''),
                 'widgetDisplay' => StyleRules::choice($settings['widgetDisplay'] ?? null, StyleRules::WIDGET_DISPLAYS, 'text'),
             ],
