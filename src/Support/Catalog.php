@@ -120,6 +120,7 @@ final class Catalog
                 'font' => $settings->getFont(),
                 'radius' => $settings->getRadius(),
                 'shadow' => $settings->hasShadow(),
+                'ignoreContrast' => $settings->ignoresContrast(),
                 'iconUrl' => BannerIcon::url($settings->getIconFileId()),
                 'tokens' => $settings->getTokens(),
             ],

@@ -144,26 +144,29 @@
 
 	function applyStyle(node, style) {
 		var tokens = Object.assign({}, style.tokens || {});
+		/* the admin chose their colours over the contrast guard on the Appearance page */
+		var guard = style.ignoreContrast !== true;
 
 		/* an unusable pair keeps the stylesheet defaults, which are compliant with each other */
-		if (!readable(tokens, 'fg', 'bg')) {
+		if (guard && !readable(tokens, 'fg', 'bg')) {
 			delete tokens.fg;
 			delete tokens.bg;
 		}
 
-		if (!readable(tokens, 'buttonFg', 'buttonBg')) {
+		if (guard && !readable(tokens, 'buttonFg', 'buttonBg')) {
 			delete tokens.buttonFg;
 			delete tokens.buttonBg;
 		}
 
 		/* an unreadable settings button pair falls back to the button colours in the stylesheet */
-		if (!readable(tokens, 'widgetFg', 'widgetBg')) {
+		if (guard && !readable(tokens, 'widgetFg', 'widgetBg')) {
 			delete tokens.widgetFg;
 			delete tokens.widgetBg;
 		}
 
 		/* accent is link text and the focus ring, so it must read against the banner background */
 		if (
+			guard &&
 			HEX.test(tokens.accent) &&
 			ratio(tokens.accent, HEX.test(tokens.bg) ? tokens.bg : '#ffffff') < 4.5
 		) {

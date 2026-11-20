@@ -30,6 +30,7 @@ final class SettingsTest extends TestCase
         $this->assertSame('inherit', $settings->getFont());
         $this->assertSame(8, $settings->getRadius());
         $this->assertTrue($settings->hasShadow());
+        $this->assertFalse($settings->ignoresContrast());
         $this->assertTrue($settings->isWidgetEnabled());
         $this->assertSame(180, $settings->getLifetimeDays());
         $this->assertSame(1, $settings->getPolicyVersion());
@@ -85,6 +86,7 @@ final class SettingsTest extends TestCase
             ->setFont('system')
             ->setToken('accent', '#AA00FF')
             ->setShadow(false)
+            ->setIgnoreContrast('1')
             ->setWidgetEnabled(false)
             ->setLifetimeDays('365');
 
@@ -93,6 +95,7 @@ final class SettingsTest extends TestCase
         $this->assertSame('system', $settings->getFont());
         $this->assertSame('#aa00ff', $settings->getToken('accent'));
         $this->assertFalse($settings->hasShadow());
+        $this->assertTrue($settings->ignoresContrast());
         $this->assertFalse($settings->isWidgetEnabled());
         $this->assertSame(365, $settings->getLifetimeDays());
     }

@@ -79,8 +79,17 @@ final class ConfigBuilderTest extends TestCase
         $this->assertSame('bottom-left', $config['style']['position']);
         $this->assertSame(12, $config['style']['radius']);
         $this->assertFalse($config['style']['shadow']);
+        $this->assertFalse($config['style']['ignoreContrast'], 'a catalog saved before the setting existed keeps the guard');
         $this->assertSame(180, $config['lifetimeDays']);
         $this->assertSame(12, strlen($config['version']));
+    }
+
+    public function testIgnoreContrastIsPassedThrough(): void
+    {
+        $data = self::data();
+        $data['settings']['ignoreContrast'] = true;
+
+        $this->assertTrue(self::build($data)['style']['ignoreContrast']);
     }
 
     public function testIconUrlIsPassedThroughOnlyWhenSafe(): void
