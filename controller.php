@@ -32,7 +32,7 @@ class Controller extends PackageController
      *
      * @var string
      */
-    protected $pkgVersion = '1.2.1';
+    protected $pkgVersion = '1.3.0';
 
     /**
      * The minimum Concrete version compatible with the package.
@@ -142,6 +142,14 @@ class Controller extends PackageController
     public function getPackageDescription()
     {
         return t('ConcreteCMS package to manage Cookie Banner');
+    }
+
+    public function install()
+    {
+        parent::install();
+
+        // Fresh installs only (upgrade() never calls this), so an icon the admin changed or cleared is never reset.
+        Installer::installDefaultIcon(app(EntityManagerInterface::class), __DIR__ . '/images/cookie.svg');
     }
 
     public function installOrUpgrade(Package $pkg)
