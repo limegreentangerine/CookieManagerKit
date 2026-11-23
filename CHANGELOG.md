@@ -2,6 +2,16 @@
 
 Notable changes to this project are documented here.
 
+## 1.5.0
+
+### Changed
+
+- New package icon in the same style as the other LGT kits (teal background, cookie glyph, "CookieKit" wordmark).
+
+### Fixed
+
+- The bundled cookie icon (`images/cookie.svg`) is now square, so it no longer leaves empty space below the cookie.
+
 ## 1.4.0
 
 ### Added
